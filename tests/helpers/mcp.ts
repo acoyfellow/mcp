@@ -9,12 +9,16 @@ export interface McpToolResult {
   result?: {
     resultType?: string
     supportedVersions?: string[]
+    ttlMs?: number
+    cacheScope?: 'public' | 'private'
     _meta?: Record<string, unknown>
     content?: Array<{ type: string; text: string }>
+    structuredContent?: Record<string, unknown>
     isError?: boolean
     tools?: Array<{
       name: string
       title?: string
+      _meta?: Record<string, unknown>
       annotations?: {
         title?: string
         readOnlyHint?: boolean

@@ -9,7 +9,7 @@
 | Raw OpenAPI spec in prompt                  | —     | ~2,000,000 | 977%                |
 | Native MCP (full schemas)                   | 2,594 | 1,170,523  | 585%                |
 | Native MCP (minimal — required params only) | 2,594 | 244,047    | 122%                |
-| Code mode                                   | 3     | ~1,100     | 0.5%                |
+| Code mode                                   | 4     | ~1,100     | 0.5%                |
 
 ## Get Started
 
@@ -90,7 +90,7 @@ https://mcp.cloudflare.com/mcp?codemode=false&truncateToolResult=false
 
 The Cloudflare OpenAPI spec is **2 million tokens**. Even with native MCP tools using minimal schemas, it's still **~244k tokens**. Traditional MCP servers that expose every endpoint as a tool leak this entire context to the main agent.
 
-This server solves the problem by using **code execution** in a [Code Mode](https://blog.cloudflare.com/code-mode-mcp/) pattern - the spec lives on the server, and only the result of the code execution is returned to the agent.
+This server uses **code execution** in a [Code Mode](https://blog.cloudflare.com/code-mode-mcp/) pattern. The spec lives on the server, and only the result of the code execution reaches the agent.
 
 ## Tools
 
@@ -98,6 +98,7 @@ Agent writes code to search the spec and execute API calls. It can also search C
 
 | Tool      | Description                                                                   |
 | --------- | ----------------------------------------------------------------------------- |
+| `profile` | Read the identity and account context authorized for the current session      |
 | `docs`    | Search Cloudflare developer documentation                                     |
 | `search`  | Write JavaScript to query `spec.paths` and find endpoints                     |
 | `execute` | Write JavaScript to call `cloudflare.request()` with the discovered endpoints |

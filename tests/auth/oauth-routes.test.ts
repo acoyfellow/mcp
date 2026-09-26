@@ -637,7 +637,7 @@ describe('GET /oauth/callback', () => {
     expect(probes.userCalls()).toBe(1)
     expect(probes.accountCalls()).toBe(1)
     expect(mcpBody.result?.resultType).toBe('complete')
-    expect(mcpBody.result?.tools?.map((tool) => tool.name)).toEqual(['docs', 'search', 'execute'])
+    expect(mcpBody.result?.tools?.map((tool) => tool.name)).toEqual(['profile', 'docs', 'search', 'execute'])
     expect((await env.OAUTH_KV.list({ prefix: 'client:' })).keys).toHaveLength(1)
   })
 

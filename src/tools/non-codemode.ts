@@ -6,11 +6,12 @@ import { fetchWithRetry } from '../utils/fetch-retry'
 import { getNonCodemodeToolMap, getNonCodemodeTools } from '../isolate-cache'
 import {
   NON_CODEMODE_ACCOUNT_DISCOVERY_GUIDANCE,
-  autoResolvedAccountId,
-  isMultiAccountUser
+  accountTokenId,
+  autoResolvedAccountId
 } from '../auth/account-access'
 import { recordToolCall } from '../metrics'
 import { DOCS_TOOL, runDocsTool } from './docs-search'
+import { PROFILE_TOOL, runProfileTool } from './profile'
 import { zodInputSchemaFromJson, type NonCodemodeTool } from '../openapi'
 import type { AuthProps } from '../auth/types'
 
@@ -29,14 +30,16 @@ export async function registerNonCodemodeTools(
 ): Promise<void> {
   const tools = await getNonCodemodeTools()
   const toolsByName = await getNonCodemodeToolMap()
+  const pinnedAccountId = accountTokenId(props)
   const resolvedAccountId = autoResolvedAccountId(props)
 
   server.server.registerCapabilities({ tools: { listChanged: false } })
 
   server.server.setRequestHandler('tools/list', () => ({
     tools: [
+      PROFILE_TOOL,
       DOCS_TOOL,
-      ...tools.map((tool) => toWireTool(toolForAccountAccess(tool, resolvedAccountId, props)))
+      ...tools.map((tool) => toWireTool(toolWithStaticAccountAccess(tool)))
     ]
   }))
 
@@ -45,7 +48,9 @@ export async function registerNonCodemodeTools(
     let result: CallToolResult
 
     try {
-      if (name === DOCS_TOOL.name) {
+      if (name === PROFILE_TOOL.name) {
+        result = runProfileTool(props)
+      } else if (name === DOCS_TOOL.name) {
         const parsed = z.object({ query: z.string() }).safeParse(request.params.arguments ?? {})
         result = parsed.success
           ? await runDocsTool(parsed.data.query)
@@ -55,7 +60,7 @@ export async function registerNonCodemodeTools(
         if (!baseTool) {
           result = toolError(`Tool ${name} not found`)
         } else {
-          const tool = toolForAccountAccess(baseTool, resolvedAccountId, props)
+          const tool = toolWithStaticAccountAccess(baseTool)
           const parsed = z
             .object(zodInputSchemaFromJson(tool.inputSchema))
             .safeParse(request.params.arguments ?? {})
@@ -63,6 +68,7 @@ export async function registerNonCodemodeTools(
             ? await callNonCodemodeTool(
                 baseTool,
                 parsed.data,
+                pinnedAccountId,
                 resolvedAccountId,
                 props.accessToken,
                 formatResult
@@ -82,6 +88,7 @@ export async function registerNonCodemodeTools(
 async function callNonCodemodeTool(
   tool: NonCodemodeTool,
   params: Record<string, unknown>,
+  pinnedAccountId: string | undefined,
   resolvedAccountId: string | undefined,
   apiToken: string,
   formatResult: FormatToolResult
@@ -91,8 +98,19 @@ async function callNonCodemodeTool(
 
   for (const paramName of pathParams) {
     let value = params[paramName] as string | undefined
-    if (paramName === 'account_id' && !value) value = resolvedAccountId
-    if (!value) return toolError(`missing required path parameter: ${paramName}`)
+    if (paramName === 'account_id') {
+      if (value && pinnedAccountId && value !== pinnedAccountId) {
+        return toolError(
+          'account_id does not match the account authorized for this session. Omit account_id to use the authorized account.'
+        )
+      }
+      if (!value) value = resolvedAccountId
+    }
+    if (!value) {
+      const guidance =
+        paramName === 'account_id' ? ` ${NON_CODEMODE_ACCOUNT_DISCOVERY_GUIDANCE}` : ''
+      return toolError(`Missing required path parameter: ${paramName}.${guidance}`)
+    }
     resolvedPath = resolvedPath.replace(`{${paramName}}`, encodeURIComponent(value))
   }
 
@@ -148,25 +166,17 @@ function toWireTool(tool: NonCodemodeTool): Tool {
   return { name, title, description, inputSchema }
 }
 
-function toolForAccountAccess(
-  tool: NonCodemodeTool,
-  resolvedAccountId: string | undefined,
-  props: AuthProps
-): NonCodemodeTool {
+function toolWithStaticAccountAccess(tool: NonCodemodeTool): NonCodemodeTool {
   if (!tool.inputSchema.properties['account_id']) return tool
 
-  const properties = { ...tool.inputSchema.properties }
-  let required = tool.inputSchema.required
-
-  if (resolvedAccountId) {
-    delete properties['account_id']
-    required = required?.filter((name) => name !== 'account_id')
-  } else if (isMultiAccountUser(props)) {
-    properties['account_id'] = {
-      type: 'string',
-      description: `Cloudflare account ID. Required for multi-account tokens. ${NON_CODEMODE_ACCOUNT_DISCOVERY_GUIDANCE}`
+  const properties = {
+    ...tool.inputSchema.properties,
+    account_id: {
+      type: 'string' as const,
+      description: `Cloudflare account ID. Optional when this session authorizes one account. ${NON_CODEMODE_ACCOUNT_DISCOVERY_GUIDANCE}`
     }
   }
+  const required = tool.inputSchema.required?.filter((name) => name !== 'account_id')
 
   const inputSchema = { ...tool.inputSchema, properties, required }
   if (required?.length === 0) delete inputSchema.required

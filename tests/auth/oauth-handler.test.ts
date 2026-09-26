@@ -36,8 +36,8 @@ function refreshCallback(refreshToken = 'old-refresh-token', getHelpers?: () => 
       props: {
         type: 'user_token',
         accessToken: 'old-access-token',
-        user: { id: 'user-1', email: 'user@example.com' },
-        accounts: [{ id: 'account-1', name: 'Account 1' }],
+        user: { id: 'user-1' },
+        accounts: [{ id: 'account-1' }],
         refreshToken
       }
     },
@@ -51,8 +51,8 @@ const expectedRefreshResult = {
   newProps: {
     type: 'user_token',
     accessToken: 'new-access-token',
-    user: { id: 'user-1', email: 'user@example.com' },
-    accounts: [{ id: 'account-1', name: 'Account 1' }],
+    user: { id: 'user-1' },
+    accounts: [{ id: 'account-1' }],
     refreshToken: 'new-refresh-token'
   },
   accessTokenTTL: 1234

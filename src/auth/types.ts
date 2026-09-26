@@ -12,10 +12,20 @@ export const AccountSchema = z.object({
 
 export const AccountsSchema = z.array(AccountSchema)
 
+const AuthUserSchema = z.object({
+  id: z.string()
+})
+
+const AuthAccountSchema = z.object({
+  id: z.string()
+})
+
+const AuthAccountsSchema = z.array(AuthAccountSchema)
+
 /**
- * Max accounts whose IDs/names we are willing to store on a grant or in the
- * identity cache (and inline into prompt metadata). Above this, only the count
- * is kept so we never persist a long, potentially-sensitive account list.
+ * Max account IDs we store on a grant or in the identity cache. Above this,
+ * only the count is kept. Account names and user emails stay outside MCP auth
+ * props so they cannot reach protocol metadata through request-local state.
  */
 export const MAX_STORED_ACCOUNTS = 30
 
@@ -41,16 +51,16 @@ export const AUTH_PROPS_VERSION = 1
 export const AccountAuthProps = z.object({
   type: z.literal('account_token'),
   accessToken: z.string(),
-  account: AccountSchema
+  account: AuthAccountSchema
 })
 
 export const UserAuthProps = z.object({
   type: z.literal('user_token'),
   accessToken: z.string(),
-  user: UserSchema,
+  user: AuthUserSchema,
   // Emptied when the user has more than MAX_STORED_ACCOUNTS accounts; the total
   // is then kept in accountCount instead of persisting the full list.
-  accounts: AccountsSchema,
+  accounts: AuthAccountsSchema,
   accountCount: z.number().optional(),
   // Absent on pre-versioning grants (see AUTH_PROPS_VERSION).
   version: z.number().optional(),

@@ -8,6 +8,18 @@
     "category": "DEVELOPER_TOOLS"
   },
   "tools": {
+    "profile": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Returns the identity and account context already authorized for the current session without changing Cloudflare resources.",
+        "open_world_justification": "Reads request-local authorization context and does not publish content or change public or third-party systems.",
+        "destructive_justification": "Does not create, update, delete, overwrite, revoke, or otherwise change Cloudflare resources."
+      }
+    },
     "docs": {
       "annotations": {
         "readOnlyHint": false,
@@ -46,6 +58,14 @@
     }
   },
   "test_cases": [
+    {
+      "description": "Read the profile authorized for the current session.",
+      "user_prompt": "Which Cloudflare account is authorized for this session?",
+      "file_attachment_urls": null,
+      "tools_triggered": "profile",
+      "expected_output": "Returns the request-local principal type and automatically selected account identifier when one account is authorized.",
+      "expected_output_url": null
+    },
     {
       "description": "Search Cloudflare documentation for a product workflow.",
       "user_prompt": "Explain how Cloudflare D1 point-in-time recovery works and cite the relevant Cloudflare documentation.",

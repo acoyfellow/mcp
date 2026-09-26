@@ -6,26 +6,31 @@ import {
   isMultiAccountUser,
   isSingleAccountUser
 } from '../../src/auth/account-access'
-import { AUTH_PROPS_VERSION, LEGACY_ACCOUNTS_PAGE_SIZE, type AuthProps } from '../../src/auth/types'
+import {
+  AuthProps as AuthPropsSchema,
+  AUTH_PROPS_VERSION,
+  LEGACY_ACCOUNTS_PAGE_SIZE,
+  type AuthProps
+} from '../../src/auth/types'
 
 const accountToken: AuthProps = {
   type: 'account_token',
   accessToken: 't',
-  account: { id: 'acct-pinned', name: 'Pinned' }
+  account: { id: 'acct-pinned' }
 }
 
 function userToken(overrides: Partial<Extract<AuthProps, { type: 'user_token' }>>): AuthProps {
   return {
     type: 'user_token',
     accessToken: 't',
-    user: { id: 'u1', email: 'u@example.com' },
+    user: { id: 'u1' },
     accounts: [],
     ...overrides
   }
 }
 
 function accountList(n: number) {
-  return Array.from({ length: n }, (_, i) => ({ id: `acct-${i + 1}`, name: `Account ${i + 1}` }))
+  return Array.from({ length: n }, (_, i) => ({ id: `acct-${i + 1}` }))
 }
 
 describe('accountTokenId', () => {
@@ -36,6 +41,24 @@ describe('accountTokenId', () => {
   it('returns undefined for user tokens and missing props', () => {
     expect(accountTokenId(userToken({ accounts: accountList(1) }))).toBeUndefined()
     expect(accountTokenId(undefined)).toBeUndefined()
+  })
+})
+
+describe('AuthProps', () => {
+  it('strips legacy emails and account names at the request boundary', () => {
+    expect(
+      AuthPropsSchema.parse({
+        type: 'user_token',
+        accessToken: 't',
+        user: { id: 'u1', email: 'private@example.com' },
+        accounts: [{ id: 'acct-1', name: 'Private Account' }]
+      })
+    ).toEqual({
+      type: 'user_token',
+      accessToken: 't',
+      user: { id: 'u1' },
+      accounts: [{ id: 'acct-1' }]
+    })
   })
 })
 

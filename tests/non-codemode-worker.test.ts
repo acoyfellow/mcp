@@ -92,7 +92,7 @@ describe('non-codemode: account_id auto-resolution through real MCP validation',
     const endpoint = tools.find((tool) => tool.name === 'get_accounts_workers_scripts')
 
     expect(endpoint?.description).toBe('PRECOMPUTED ARTIFACT')
-    expect(endpoint?.inputSchema.properties).not.toHaveProperty('account_id')
+    expect(endpoint?.inputSchema.properties).toHaveProperty('account_id')
     expect(endpoint?.inputSchema.required ?? []).not.toContain('account_id')
     expect(tools.map((tool) => tool.name)).toContain('docs')
   })

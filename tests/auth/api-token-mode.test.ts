@@ -24,6 +24,8 @@ vi.mock('../../src/utils/fetch-retry', async (importOriginal) => {
 
 const USER = { id: 'user-1', email: 'user@example.com' }
 const ACCOUNT = { id: 'account-1', name: 'Account One' }
+const AUTH_USER = { id: USER.id }
+const AUTH_ACCOUNT = { id: ACCOUNT.id }
 
 function resolverInput(token: string) {
   return {
@@ -103,8 +105,8 @@ describe('buildAuthProps', () => {
     ).toEqual({
       type: 'user_token',
       accessToken: 'token',
-      user: USER,
-      accounts: [ACCOUNT],
+      user: AUTH_USER,
+      accounts: [AUTH_ACCOUNT],
       accountCount: 1,
       version: AUTH_PROPS_VERSION
     })
@@ -114,7 +116,7 @@ describe('buildAuthProps', () => {
     expect(buildAuthProps('token', { type: 'account', account: ACCOUNT })).toEqual({
       type: 'account_token',
       accessToken: 'token',
-      account: ACCOUNT
+      account: AUTH_ACCOUNT
     })
   })
 })
@@ -130,7 +132,7 @@ describe('resolveExternalToken', () => {
       props: {
         type: 'account_token',
         accessToken: 'cfat_account-token',
-        account: ACCOUNT
+        account: AUTH_ACCOUNT
       },
       audience: env.MCP_RESOURCE
     })
@@ -147,7 +149,12 @@ describe('resolveExternalToken', () => {
       })
 
       await expect(resolveExternalToken(resolverInput(token))).resolves.toMatchObject({
-        props: { type: 'user_token', accessToken: token, user: USER, accounts: [ACCOUNT] },
+        props: {
+          type: 'user_token',
+          accessToken: token,
+          user: AUTH_USER,
+          accounts: [AUTH_ACCOUNT]
+        },
         audience: env.MCP_RESOURCE
       })
       expect(calls.userCalls()).toBe(1)
@@ -164,7 +171,7 @@ describe('resolveExternalToken', () => {
     await expect(
       resolveExternalToken(resolverInput('legacy-account-token'))
     ).resolves.toMatchObject({
-      props: { type: 'account_token', account: ACCOUNT }
+      props: { type: 'account_token', account: AUTH_ACCOUNT }
     })
     expect(calls.userCalls()).toBe(1)
     expect(calls.accountCalls()).toBe(1)
@@ -212,12 +219,23 @@ describe('resolveExternalToken', () => {
 
     expect(calls.userCalls()).toBe(1)
     expect(calls.accountCalls()).toBe(1)
+    const cached = await env.OAUTH_KV.get(
+      `api-token-identity:v5:${await sha256Hex('cfut_cached-user-token')}`,
+      'json'
+    )
+    expect(cached).toEqual({
+      type: 'user',
+      user: AUTH_USER,
+      accounts: [AUTH_ACCOUNT]
+    })
+    expect(JSON.stringify(cached)).not.toContain(USER.email)
+    expect(JSON.stringify(cached)).not.toContain(ACCOUNT.name)
   })
 
   it('ignores malformed cached identity data and revalidates upstream', async () => {
     const token = 'cfut_invalid-cache-token'
     await env.OAUTH_KV.put(
-      `api-token-identity:v4:${await sha256Hex(token)}`,
+      `api-token-identity:v5:${await sha256Hex(token)}`,
       JSON.stringify({ user: 'not-an-object', accounts: [] })
     )
     const calls = mockIdentity({
@@ -226,7 +244,7 @@ describe('resolveExternalToken', () => {
     })
 
     await expect(resolveExternalToken(resolverInput(token))).resolves.toMatchObject({
-      props: { type: 'user_token', user: USER, accounts: [ACCOUNT] }
+      props: { type: 'user_token', user: AUTH_USER, accounts: [AUTH_ACCOUNT] }
     })
     expect(calls.userCalls()).toBe(1)
     expect(calls.accountCalls()).toBe(1)

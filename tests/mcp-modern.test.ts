@@ -86,7 +86,93 @@ describe('MCP 2026-07-28 stateless handler', () => {
 
     expect(response.status).toBe(200)
     expect(body.result?.resultType).toBe('complete')
-    expect(body.result?.tools?.map((tool) => tool.name)).toEqual(['docs', 'search', 'execute'])
+    expect(body.result?.ttlMs).toBe(0)
+    expect(body.result?.cacheScope).toBe('private')
+    expect(body.result?.tools?.map((tool) => tool.name)).toEqual(['profile', 'docs', 'search', 'execute'])
+    expect(body.result?.tools?.find((tool) => tool.name === 'profile')?._meta).toMatchObject({
+      'openai/profile': true
+    })
+  })
+
+  it('returns account context only when the profile tool runs', async () => {
+    const listedResponse = await exports.default.fetch(modernMcpRequest(API_TOKEN, 'tools/list'))
+    const listed = await parseMcpResult(listedResponse)
+    expect(JSON.stringify(listed.result?.tools)).not.toContain(ACCOUNT_ID)
+
+    const response = await exports.default.fetch(
+      modernMcpRequest(API_TOKEN, 'tools/call', {
+        name: 'profile',
+        arguments: {}
+      })
+    )
+    const body = await parseMcpResult(response)
+
+    expect(response.status).toBe(200)
+    expect(body.result?.isError).toBeFalsy()
+    expect(body.result?.structuredContent).toMatchObject({
+      principal_type: 'account',
+      account_id: ACCOUNT_ID,
+      account_count: 1
+    })
+  })
+
+  it('serves identical tool metadata across principals and protocol eras', async () => {
+    const accountIds = {
+      account: '10000000000000000000000000000001',
+      single: '20000000000000000000000000000001',
+      multiOne: '30000000000000000000000000000001',
+      multiTwo: '30000000000000000000000000000002'
+    }
+    server.use(
+      http.get(`${API_BASE}/user`, () =>
+        HttpResponse.json(cfSuccess({ id: 'user-static-metadata', email: 'private@example.com' }))
+      ),
+      http.get(`${API_BASE}/accounts`, ({ request }) => {
+        const token = request.headers.get('Authorization')
+        if (token === 'Bearer cfat_static-account') {
+          return HttpResponse.json(
+            cfAccountsSuccess([{ id: accountIds.account, name: 'Private Account' }])
+          )
+        }
+        if (token === 'Bearer cfut_static-single') {
+          return HttpResponse.json(
+            cfAccountsSuccess([{ id: accountIds.single, name: 'Private Single' }])
+          )
+        }
+        return HttpResponse.json(
+          cfAccountsSuccess([
+            { id: accountIds.multiOne, name: 'Private Multi One' },
+            { id: accountIds.multiTwo, name: 'Private Multi Two' }
+          ])
+        )
+      })
+    )
+
+    const principals = ['cfat_static-account', 'cfut_static-single', 'cfut_static-multi']
+    for (const url of [MCP_URL, `${MCP_URL}?codemode=false`]) {
+      for (const protocol of ['modern', 'legacy'] as const) {
+        const toolLists = await Promise.all(
+          principals.map(async (token) => {
+            const request =
+              protocol === 'modern'
+                ? modernMcpRequest(token, 'tools/list', {}, { url })
+                : new Request(url, mcpToolListRequest(token))
+            const response = await exports.default.fetch(request)
+            expect(response.status).toBe(200)
+            return (await parseMcpResult(response)).result?.tools
+          })
+        )
+        const expected = JSON.stringify(toolLists[0])
+        for (const tools of toolLists) expect(JSON.stringify(tools)).toBe(expected)
+        for (const privateValue of [
+          'private@example.com',
+          'Private Account',
+          ...Object.values(accountIds)
+        ]) {
+          expect(expected).not.toContain(privateValue)
+        }
+      }
+    }
   })
 
   it('serves a modern Code Mode tools/call', async () => {
@@ -201,8 +287,9 @@ describe('MCP 2026-07-28 stateless handler', () => {
 
     expect(codemodeResponse.status).toBe(200)
     expect(endpointResponse.status).toBe(200)
-    expect(codemode.result?.tools?.map((tool) => tool.name)).toEqual(['docs', 'search', 'execute'])
+    expect(codemode.result?.tools?.map((tool) => tool.name)).toEqual(['profile', 'docs', 'search', 'execute'])
     expect(endpoints.result?.tools?.map((tool) => tool.name)).toEqual([
+      'profile',
       'docs',
       'get_accounts_workers_scripts'
     ])
@@ -237,7 +324,9 @@ describe('MCP 2026-07-28 stateless handler', () => {
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toContain('text/event-stream')
     expect(response.headers.get('mcp-session-id')).toBeNull()
-    expect(body.result?.tools?.map((tool) => tool.name)).toEqual(['docs', 'search', 'execute'])
+    expect(body.result).not.toHaveProperty('ttlMs')
+    expect(body.result).not.toHaveProperty('cacheScope')
+    expect(body.result?.tools?.map((tool) => tool.name)).toEqual(['profile', 'docs', 'search', 'execute'])
   })
 
   it.each(['GET', 'DELETE'])('rejects session-only %s requests', async (method) => {

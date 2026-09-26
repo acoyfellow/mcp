@@ -117,6 +117,41 @@ describe('execute: REST responses', () => {
     })
     expect(text).toContain('raw-value')
   })
+
+  it('rejects an account_id that differs from an account token binding', async () => {
+    mockIdentityProbe({ accounts: [{ id: ACCOUNT_ID, name: 'Acc' }] })
+    const result = await callTool(API_TOKEN, 'execute', {
+      account_id: '00000000000000000000000000000099',
+      code: 'async () => "should not run"'
+    })
+
+    expect(result.result?.isError).toBe(true)
+    expect(toolText(result)).toContain(
+      'account_id does not match the account authorized for this session'
+    )
+    expect(toolText(result)).not.toContain('should not run')
+  })
+
+  it('allows a user token to select an account added after its identity snapshot', async () => {
+    const newAccountId = '00000000000000000000000000000098'
+    mockIdentityProbe({
+      user: { id: 'u1', email: 'u@example.com' },
+      accounts: [{ id: ACCOUNT_ID, name: 'Original Account' }]
+    })
+    server.use(
+      http.get(`${API_BASE}/accounts/${newAccountId}/tokens/verify`, () =>
+        HttpResponse.json(cfSuccess({ status: 'active' }))
+      )
+    )
+
+    const result = await callTool('cfut_user-account-selection', 'execute', {
+      account_id: newAccountId,
+      code: `async () => cloudflare.request({ method: "GET", path: \`/accounts/\${accountId}/tokens/verify\` })`
+    })
+
+    expect(result.result?.isError).toBeFalsy()
+    expect(toolText(result)).toContain('"status": "active"')
+  })
 })
 
 describe('execute: GraphQL responses', () => {
@@ -184,7 +219,7 @@ describe('execute: no account resolved (multi-account user token)', () => {
       code: `async () => cloudflare.request({ method: "GET", path: \`/accounts/\${accountId}/workers/scripts\` })`
     })
     const text = toolText(result)
-    expect(text).toContain('No account selected')
+    expect(text).toContain('No account is selected')
     expect(text).toContain('Call GET /accounts to discover available accounts.')
     expect(text).not.toContain('pass account_id to the execute tool')
     // Must not have silently produced an /accounts//... request.

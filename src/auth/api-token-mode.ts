@@ -3,9 +3,9 @@ import {
   type ResolveExternalTokenInput,
   type ResolveExternalTokenResult
 } from '@cloudflare/workers-oauth-provider'
+import { z } from 'zod'
 
 import {
-  CloudflareIdentitySchema,
   resolveCloudflareCredential,
   type CloudflareIdentity,
   type CloudflareTokenOwner
@@ -14,6 +14,22 @@ import { AUTH_PROPS_VERSION, type AuthProps } from './types'
 import { OAuthError } from './workers-oauth-utils'
 
 const API_TOKEN_IDENTITY_CACHE_TTL_SECONDS = 2_592_000
+const API_TOKEN_IDENTITY_CACHE_VERSION = 'v5'
+
+const CachedIdentitySchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('account'),
+    account: z.object({ id: z.string() })
+  }),
+  z.object({
+    type: z.literal('user'),
+    user: z.object({ id: z.string() }),
+    accounts: z.array(z.object({ id: z.string() })),
+    accountCount: z.number().optional()
+  })
+])
+
+type CachedIdentity = z.infer<typeof CachedIdentitySchema>
 
 /** Prefixes are ownership hints; unprefixed legacy credentials remain supported. */
 export function cloudflareTokenOwner(token: string): CloudflareTokenOwner {
@@ -31,13 +47,13 @@ async function getCachedIdentity(
   token: string,
   tokenOwner: CloudflareTokenOwner,
   kv: KVNamespace
-): Promise<CloudflareIdentity> {
-  const cacheKey = `api-token-identity:v4:${await hashApiToken(token)}`
+): Promise<CachedIdentity> {
+  const cacheKey = `api-token-identity:${API_TOKEN_IDENTITY_CACHE_VERSION}:${await hashApiToken(token)}`
 
   try {
     const cachedValue = await kv.get(cacheKey, 'json')
     if (cachedValue !== null) {
-      const cached = CloudflareIdentitySchema.safeParse(cachedValue)
+      const cached = CachedIdentitySchema.safeParse(cachedValue)
       if (cached.success) return cached.data
       console.warn('api_token_identity_probe ignored invalid cache entry')
     }
@@ -45,7 +61,7 @@ async function getCachedIdentity(
     console.warn('api_token_identity_probe kv-cache read failed', error)
   }
 
-  const identity = await resolveCloudflareCredential(token, tokenOwner)
+  const identity = minimizeIdentity(await resolveCloudflareCredential(token, tokenOwner))
 
   try {
     await kv.put(cacheKey, JSON.stringify(identity), {
@@ -56,6 +72,18 @@ async function getCachedIdentity(
   }
 
   return identity
+}
+
+function minimizeIdentity(identity: CloudflareIdentity): CachedIdentity {
+  if (identity.type === 'account') {
+    return { type: 'account', account: { id: identity.account.id } }
+  }
+  return {
+    type: 'user',
+    user: { id: identity.user.id },
+    accounts: identity.accounts.map(({ id }) => ({ id })),
+    accountCount: identity.accountCount
+  }
 }
 
 function externalTokenError(
@@ -92,20 +120,20 @@ function externalTokenError(
 }
 
 /** Convert a verified Cloudflare identity into request-local tool props. */
-export function buildAuthProps(token: string, identity: CloudflareIdentity): AuthProps {
+export function buildAuthProps(token: string, identity: CachedIdentity): AuthProps {
   switch (identity.type) {
     case 'account':
       return {
         type: 'account_token',
         accessToken: token,
-        account: identity.account
+        account: { id: identity.account.id }
       }
     case 'user':
       return {
         type: 'user_token',
         accessToken: token,
-        user: identity.user,
-        accounts: identity.accounts,
+        user: { id: identity.user.id },
+        accounts: identity.accounts.map(({ id }) => ({ id })),
         accountCount: identity.accountCount,
         version: AUTH_PROPS_VERSION
       }

@@ -3,6 +3,7 @@ import { registerDocsTool } from './tools/docs-search'
 import { registerNonCodemodeTools } from './tools/non-codemode'
 import { registerSearchTool } from './tools/search'
 import { registerExecuteTool } from './tools/execute'
+import { registerProfileTool } from './tools/profile'
 import { attachMetrics } from './metrics'
 import { SERVER_INFO } from './constants'
 import { stringifyResponse, truncateResponse } from './truncate'
@@ -33,7 +34,11 @@ export async function createServer(
   props: AuthProps,
   { codemode = true, truncateToolResult = true }: ServerOptions = {}
 ): Promise<McpServer> {
-  const server = new McpServer(SERVER_INFO)
+  const server = new McpServer(SERVER_INFO, {
+    cacheHints: {
+      'tools/list': { ttlMs: 0, cacheScope: 'private' }
+    }
+  })
   const formatResult = truncateToolResult ? truncateResponse : stringifyResponse
 
   if (!codemode) {
@@ -44,6 +49,7 @@ export async function createServer(
   // Track tool_call metrics for every Code-Mode tool registered below. The
   // metrics wrapper also mirrors tool.title into annotations.title.
   attachMetrics(server, props)
+  registerProfileTool(server, props)
   registerDocsTool(server)
   await registerSearchTool(server, formatResult)
   registerExecuteTool(server, props, formatResult)

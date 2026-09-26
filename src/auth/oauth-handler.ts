@@ -346,8 +346,8 @@ export function createAuthHandlers() {
         scope: oauthReqInfo.scope,
         props: {
           type: 'user_token',
-          user: identity.user,
-          accounts: identity.accounts,
+          user: { id: identity.user.id },
+          accounts: identity.accounts.map(({ id }) => ({ id })),
           accountCount: identity.accountCount,
           version: AUTH_PROPS_VERSION,
           accessToken: access_token,
