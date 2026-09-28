@@ -6,8 +6,7 @@ import { fetchWithRetry } from '../utils/fetch-retry'
 import { getNonCodemodeToolMap, getNonCodemodeTools } from '../isolate-cache'
 import {
   NON_CODEMODE_ACCOUNT_DISCOVERY_GUIDANCE,
-  autoResolvedAccountId,
-  isMultiAccountUser
+  autoResolvedAccountId
 } from '../auth/account-access'
 import { recordToolCall } from '../metrics'
 import { DOCS_TOOL, runDocsTool } from './docs-search'
@@ -34,10 +33,7 @@ export async function registerNonCodemodeTools(
   server.server.registerCapabilities({ tools: { listChanged: false } })
 
   server.server.setRequestHandler('tools/list', () => ({
-    tools: [
-      DOCS_TOOL,
-      ...tools.map((tool) => toWireTool(toolForAccountAccess(tool, resolvedAccountId, props)))
-    ]
+    tools: [DOCS_TOOL, ...tools.map((tool) => toWireTool(toolForAccountAccess(tool)))]
   }))
 
   server.server.setRequestHandler('tools/call', async (request) => {
@@ -55,7 +51,7 @@ export async function registerNonCodemodeTools(
         if (!baseTool) {
           result = toolError(`Tool ${name} not found`)
         } else {
-          const tool = toolForAccountAccess(baseTool, resolvedAccountId, props)
+          const tool = toolForAccountAccess(baseTool)
           const parsed = z
             .object(zodInputSchemaFromJson(tool.inputSchema))
             .safeParse(request.params.arguments ?? {})
@@ -92,6 +88,11 @@ async function callNonCodemodeTool(
   for (const paramName of pathParams) {
     let value = params[paramName] as string | undefined
     if (paramName === 'account_id' && !value) value = resolvedAccountId
+    if (!value && paramName === 'account_id') {
+      return toolError(
+        `missing required path parameter: account_id. ${NON_CODEMODE_ACCOUNT_DISCOVERY_GUIDANCE}`
+      )
+    }
     if (!value) return toolError(`missing required path parameter: ${paramName}`)
     resolvedPath = resolvedPath.replace(`{${paramName}}`, encodeURIComponent(value))
   }
@@ -148,25 +149,23 @@ function toWireTool(tool: NonCodemodeTool): Tool {
   return { name, title, description, inputSchema }
 }
 
-function toolForAccountAccess(
-  tool: NonCodemodeTool,
-  resolvedAccountId: string | undefined,
-  props: AuthProps
-): NonCodemodeTool {
+const ACCOUNT_ID_PARAM_DESCRIPTION = `Cloudflare account ID. Optional when the session is authorized for exactly one account; otherwise required. ${NON_CODEMODE_ACCOUNT_DISCOVERY_GUIDANCE}`
+
+/**
+ * The same `account_id` schema for every session: always present, never
+ * required. MCP clients cache tool metadata and may serve one user's tool list
+ * to another, so the schema can't depend on the token. The call handler fills
+ * in the session's account when it can, and otherwise returns account
+ * discovery guidance.
+ */
+function toolForAccountAccess(tool: NonCodemodeTool): NonCodemodeTool {
   if (!tool.inputSchema.properties['account_id']) return tool
 
-  const properties = { ...tool.inputSchema.properties }
-  let required = tool.inputSchema.required
-
-  if (resolvedAccountId) {
-    delete properties['account_id']
-    required = required?.filter((name) => name !== 'account_id')
-  } else if (isMultiAccountUser(props)) {
-    properties['account_id'] = {
-      type: 'string',
-      description: `Cloudflare account ID. Required for multi-account tokens. ${NON_CODEMODE_ACCOUNT_DISCOVERY_GUIDANCE}`
-    }
+  const properties = {
+    ...tool.inputSchema.properties,
+    account_id: { type: 'string' as const, description: ACCOUNT_ID_PARAM_DESCRIPTION }
   }
+  const required = tool.inputSchema.required?.filter((name) => name !== 'account_id')
 
   const inputSchema = { ...tool.inputSchema, properties, required }
   if (required?.length === 0) delete inputSchema.required

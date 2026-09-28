@@ -192,6 +192,27 @@ describe('execute: no account resolved (multi-account user token)', () => {
   })
 })
 
+describe('execute: account resolution', () => {
+  const OTHER_ACCOUNT_ID = '00000000000000000000000000000002'
+
+  it('pre-sets accountId when the session has exactly one account', async () => {
+    mockIdentityProbe({ accounts: [{ id: ACCOUNT_ID, name: 'Acc' }] })
+    const result = await callTool(API_TOKEN, 'execute', { code: 'async () => accountId' })
+    expect(result.result?.isError).toBeFalsy()
+    expect(toolText(result)).toContain(ACCOUNT_ID)
+  })
+
+  it('uses an explicit account_id over the auto-resolved account', async () => {
+    mockIdentityProbe({ accounts: [{ id: ACCOUNT_ID, name: 'Acc' }] })
+    const result = await callTool(API_TOKEN, 'execute', {
+      code: 'async () => accountId',
+      account_id: OTHER_ACCOUNT_ID
+    })
+    expect(result.result?.isError).toBeFalsy()
+    expect(toolText(result)).toContain(OTHER_ACCOUNT_ID)
+  })
+})
+
 describe('search: real SPEC_BUCKET', () => {
   const SPEC_PATHS = {
     '/accounts/{account_id}/workers/scripts': { get: { summary: 'List Workers' } }

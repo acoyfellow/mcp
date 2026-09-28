@@ -26,13 +26,6 @@ export const MAX_STORED_ACCOUNTS = 30
 export const ACCOUNTS_PROBE_PAGE_SIZE = MAX_STORED_ACCOUNTS + 1
 
 /**
- * Account-list page size the identity probe used before MAX_STORED_ACCOUNTS
- * existed. A pre-versioning grant holding exactly this many accounts was almost
- * certainly truncated to the first page, so its list is treated as incomplete.
- */
-export const LEGACY_ACCOUNTS_PAGE_SIZE = 20
-
-/**
  * Schema version stamped onto props the current code writes. Props without a
  * version predate account-list versioning and may carry a truncated list.
  */

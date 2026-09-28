@@ -8,9 +8,7 @@ import { formatError } from '../utils/errors'
 import {
   ACCOUNT_DISCOVERY_DESCRIPTION,
   ACCOUNT_DISCOVERY_GUIDANCE,
-  accountTokenId,
-  autoResolvedAccountId,
-  isMultiAccountUser
+  autoResolvedAccountId
 } from '../auth/account-access'
 import type { AuthProps } from '../auth/types'
 
@@ -202,40 +200,20 @@ export default class CodeExecutor extends WorkerEntrypoint {
 }
 
 /**
- * The `CLOUDFLARE_TYPES` block plus a per-session comment describing how
- * `accountId` is resolved for this token (pre-set for the session, or chosen
- * per call). It never names the account, because clients cache tool metadata.
+ * Description for the `execute` tool: the Cloudflare type declarations, how
+ * `accountId` is resolved, and a multipart Worker-upload example.
+ *
+ * It is the same for every session. MCP clients cache tool metadata and may
+ * serve one user's tool list to another, so nothing here may depend on the
+ * token: no account ids or names, and no branching on token shape.
  */
-function cloudflareTypesForAccount(props?: AuthProps): string {
-  if (autoResolvedAccountId(props)) {
-    return (
-      CLOUDFLARE_TYPES +
-      `\n// accountId is pre-set to the account authorized for this session — use it directly in API paths.\n`
-    )
-  }
-
-  if (isMultiAccountUser(props)) {
-    return (
-      CLOUDFLARE_TYPES +
-      `\n// accountId is set from the optional account_id tool argument. Reading it before selecting an account throws an error.\n`
-    )
-  }
-
-  return CLOUDFLARE_TYPES
-}
-
-/**
- * Description for the `execute` tool, including the per-session Cloudflare type
- * declarations and a multipart Worker-upload example.
- */
-function executeToolDescription(props?: AuthProps): string {
-  const types = cloudflareTypesForAccount(props)
-  const accountSelection = accountSelectionDescription(props)
-
-  return `Execute JavaScript code that can read, create, update, or delete resources through the Cloudflare API. First use the 'search' tool to find the right endpoints, then write code using the cloudflare.request() function.
+const EXECUTE_TOOL_DESCRIPTION = `Execute JavaScript code that can read, create, update, or delete resources through the Cloudflare API. First use the 'search' tool to find the right endpoints, then write code using the cloudflare.request() function.
 
 Available in your code:
-${types}${accountSelection}
+${CLOUDFLARE_TYPES}
+// accountId is the account_id tool argument when passed; otherwise the session's account when it is authorized for exactly one. Reading it when neither applies throws an error.
+
+When the session has access to multiple accounts, pass account_id. ${ACCOUNT_DISCOVERY_DESCRIPTION}
 
 Your code must be an async arrow function that returns the result.
 
@@ -247,28 +225,19 @@ async () => {
   const body = [\`--\${b}\`, 'Content-Disposition: form-data; name="metadata"', 'Content-Type: application/json', '', JSON.stringify(metadata), \`--\${b}\`, 'Content-Disposition: form-data; name="script"', 'Content-Type: application/javascript', '', code, \`--\${b}--\`].join("\\r\\n");
   return cloudflare.request({ method: "PUT", path: \`/accounts/\${accountId}/workers/scripts/my-worker\`, body, contentType: \`multipart/form-data; boundary=\${b}\`, rawBody: true });
 }`
-}
 
-function accountSelectionDescription(props?: AuthProps): string {
-  if (!isMultiAccountUser(props)) return ''
-
-  return `
-
-This token has access to multiple Cloudflare accounts. ${ACCOUNT_DISCOVERY_DESCRIPTION}`
-}
-
-function accountIdParamDescription(): string {
-  return 'Cloudflare account ID to scope execution to a singular account. Optional for account-independent calls.'
-}
+const ACCOUNT_ID_PARAM_DESCRIPTION =
+  'Cloudflare account ID to run against. Optional when the session is authorized for exactly one account, and for account-independent calls such as GET /accounts.'
 
 /**
  * Register the `execute` tool: runs sandboxed JavaScript against the Cloudflare
  * API via `cloudflare.request()`.
  *
- * Two shapes depending on the session:
- *  - Account token (pinned account): `account_id` is fixed, not a parameter.
- *  - User token: `account_id` selects the account, and may be omitted for
- *    account-independent discovery calls such as `GET /accounts`.
+ * The metadata is identical for every token (see `EXECUTE_TOOL_DESCRIPTION`);
+ * only the handler looks at the session. An explicit `account_id` wins,
+ * otherwise the account is auto-resolved for account tokens and single-account
+ * user tokens. An account token given another account's id is rejected by the
+ * Cloudflare API, the same as any other account it can't access.
  *
  * `formatResult` turns the value the code returns into the tool's text output.
  */
@@ -278,45 +247,15 @@ export function registerExecuteTool(
   formatResult: FormatToolResult
 ): void {
   const apiToken = props.accessToken
-  const description = executeToolDescription(props)
-  const pinnedAccountId = accountTokenId(props)
-
-  if (pinnedAccountId) {
-    server.registerTool(
-      'execute',
-      {
-        title: 'Cloudflare API Code Executor',
-        description,
-        inputSchema: z.object({
-          code: z.string().describe('JavaScript async arrow function to execute')
-        }),
-        annotations: {
-          title: 'Cloudflare API Code Executor',
-          readOnlyHint: false,
-          openWorldHint: true,
-          destructiveHint: true
-        }
-      },
-      async ({ code }) => {
-        try {
-          const result = await runExecute(code, pinnedAccountId, apiToken)
-          return { content: [{ type: 'text', text: formatResult(result) }] }
-        } catch (error) {
-          return formatError(error)
-        }
-      }
-    )
-    return
-  }
 
   server.registerTool(
     'execute',
     {
       title: 'Cloudflare API Code Executor',
-      description,
+      description: EXECUTE_TOOL_DESCRIPTION,
       inputSchema: z.object({
         code: z.string().describe('JavaScript async arrow function to execute'),
-        account_id: z.string().optional().describe(accountIdParamDescription())
+        account_id: z.string().optional().describe(ACCOUNT_ID_PARAM_DESCRIPTION)
       }),
       annotations: {
         title: 'Cloudflare API Code Executor',

@@ -1,6 +1,4 @@
-import { LEGACY_ACCOUNTS_PAGE_SIZE, type AuthProps } from './types'
-
-type UserToken = Extract<AuthProps, { type: 'user_token' }>
+import type { AuthProps } from './types'
 
 /** Concise Code-Mode guidance for unresolved multi-account execution errors. */
 export const ACCOUNT_DISCOVERY_GUIDANCE = 'Call GET /accounts to discover available accounts.'
@@ -19,16 +17,6 @@ export const NON_CODEMODE_ACCOUNT_DISCOVERY_GUIDANCE =
  * shape.
  */
 
-/** Account id fixed by an account-scoped token (pinned; no choice to make). */
-export function accountTokenId(props?: AuthProps): string | undefined {
-  return props?.type === 'account_token' ? props.account.id : undefined
-}
-
-/** User token bound to exactly one usable account. */
-export function isSingleAccountUser(props?: AuthProps): props is UserToken {
-  return props?.type === 'user_token' && props.accounts.length === 1
-}
-
 /**
  * The account id usable without asking the user: an account token's fixed
  * account, or a single-account user token's only account. `undefined` when the
@@ -36,26 +24,6 @@ export function isSingleAccountUser(props?: AuthProps): props is UserToken {
  */
 export function autoResolvedAccountId(props?: AuthProps): string | undefined {
   if (props?.type === 'account_token') return props.account.id
-  if (isSingleAccountUser(props)) return props.accounts[0].id
+  if (props?.type === 'user_token' && props.accounts.length === 1) return props.accounts[0].id
   return undefined
-}
-
-/**
- * A pre-versioning grant holding exactly the old first-page size almost
- * certainly had its account list truncated, so the stored list cannot be
- * trusted as the full set and is treated like a too-many-accounts token.
- */
-export function hasIncompleteLegacyAccountList(props: UserToken): boolean {
-  return props.version === undefined && props.accounts.length === LEGACY_ACCOUNTS_PAGE_SIZE
-}
-
-/**
- * User token spanning multiple accounts the model must choose between: a stored
- * list, an omitted list (count only), or an incomplete legacy list.
- */
-export function isMultiAccountUser(props?: AuthProps): props is UserToken {
-  if (props?.type !== 'user_token') return false
-  if (hasIncompleteLegacyAccountList(props)) return true
-  if (props.accounts.length > 1) return true
-  return props.accounts.length === 0 && (props.accountCount ?? 0) > 1
 }

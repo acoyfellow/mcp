@@ -347,102 +347,6 @@ describe('createServer with codemode=false', () => {
     expect(toolNames).not.toContain('get_accounts_workers_scripts')
   })
 
-  it('includes a small account list only in the execute tool description', async () => {
-    const accounts = Array.from({ length: 30 }, (_, index) => ({
-      id: `acct-${index + 1}`,
-      name: `Account ${index + 1}`
-    }))
-    const props: AuthProps = {
-      type: 'user_token',
-      accessToken: 'test-token',
-      user: { id: 'u1', email: 'test@example.com' },
-      accounts
-    }
-    await seedSpec({})
-
-    const server = await createServer(props)
-    const execute = (server as any)._registeredTools['execute']
-    const accountIdDescription = execute.inputSchema.shape.account_id.description
-
-    expect((server as any).server._instructions).toBeUndefined()
-    expect(execute.description).not.toContain('Available accounts')
-    expect(execute.description).not.toContain('acct-1')
-    expect(execute.description).not.toContain('Account 1')
-    expect(accountIdDescription).not.toContain('acct-1')
-    expect(accountIdDescription).toBe(
-      'Cloudflare account ID to scope execution to a singular account. Optional for account-independent calls.'
-    )
-  })
-
-  it('treats a legacy grant (no version) with exactly 20 accounts as incomplete', async () => {
-    const accounts = Array.from({ length: 20 }, (_, index) => ({
-      id: `legacy-acct-${index + 1}`,
-      name: `Legacy Account ${index + 1}`
-    }))
-    const props: AuthProps = {
-      type: 'user_token',
-      accessToken: 'test-token',
-      user: { id: 'u1', email: 'test@example.com' },
-      accounts
-    }
-    await seedSpec({})
-
-    const server = await createServer(props)
-    const execute = (server as any)._registeredTools['execute']
-    const accountIdDescription = execute.inputSchema.shape.account_id.description
-
-    expect(accountIdDescription).not.toContain('legacy-acct-1')
-    expect(accountIdDescription).not.toContain('GET /accounts')
-    expect(execute.description).not.toContain('legacy-acct-1')
-    expect(execute.description).toContain('multiple Cloudflare accounts')
-    expect(execute.description).toContain('GET /accounts')
-  })
-
-  it('inlines exactly 20 accounts when the grant is versioned (complete)', async () => {
-    const accounts = Array.from({ length: 20 }, (_, index) => ({
-      id: `fresh-acct-${index + 1}`,
-      name: `Fresh Account ${index + 1}`
-    }))
-    const props: AuthProps = {
-      type: 'user_token',
-      accessToken: 'test-token',
-      user: { id: 'u1', email: 'test@example.com' },
-      accounts,
-      version: AUTH_PROPS_VERSION
-    }
-    await seedSpec({})
-
-    const server = await createServer(props)
-    const execute = (server as any)._registeredTools['execute']
-    const accountIdDescription = execute.inputSchema.shape.account_id.description
-
-    expect(execute.description).not.toContain('fresh-acct-1')
-    expect(execute.description).not.toContain('Fresh Account 1')
-    expect(accountIdDescription).not.toContain('fresh-acct-1')
-  })
-
-  it('reports only the count when the account list was omitted at the identity layer', async () => {
-    const props: AuthProps = {
-      type: 'user_token',
-      accessToken: 'test-token',
-      user: { id: 'u1', email: 'test@example.com' },
-      accounts: [],
-      accountCount: 137
-    }
-    await seedSpec({})
-
-    const server = await createServer(props)
-    const execute = (server as any)._registeredTools['execute']
-    const accountIdDescription = execute.inputSchema.shape.account_id.description
-
-    expect(accountIdDescription).not.toContain('137 accounts')
-    expect(accountIdDescription).not.toContain('GET /accounts')
-    expect(execute.description).not.toContain('137 Cloudflare accounts')
-    expect(execute.description).toContain('multiple Cloudflare accounts')
-    expect(execute.description).toContain('GET /accounts')
-    expect(execute.description).toContain('GET /accounts?name=')
-  })
-
   // NOTE: "execute without account_id runs account-independent discovery calls"
   // is covered end-to-end against the real Worker Loader in tests/executor.test.ts
   // ('execute: no account resolved (multi-account user token)').
@@ -870,36 +774,27 @@ describe('createServer with codemode=false', () => {
     }
   })
 
-  it('adds account_id param for multi-account user tokens', async () => {
+  it('exposes the same optional account_id param for every session', async () => {
     const specPaths = {
       '/accounts/{account_id}/workers/scripts': {
-        get: { summary: 'List Workers' } as OperationInfo
+        get: {
+          summary: 'List Workers',
+          parameters: [{ name: 'account_id', in: 'path', required: true }]
+        } as OperationInfo
       }
     }
 
-    const props: AuthProps = {
-      type: 'user_token',
-      accessToken: 'test-token',
-      user: { id: 'u1', email: 'test@example.com' },
-      accounts: [
-        { id: 'acct-1', name: 'Account One' },
-        { id: 'acct-2', name: 'Account Two' }
-      ]
-    }
-
     await seedSpec(specPaths)
-    const server = await createServer(props, { codemode: false })
+    const server = await createServer(acctProps('acct-123'), { codemode: false })
 
-    const listedTools = await listTools(server)
-    const listedTool = listedTools.find((item) => item.name === 'get_accounts_workers_scripts')
-    expect(listedTool?.inputSchema.required).toContain('account_id')
-    expect(listedTool?.inputSchema.properties?.account_id).toEqual({
+    const tools = await listTools(server)
+    const tool = tools.find((item) => item.name === 'get_accounts_workers_scripts')
+    expect(tool?.inputSchema.required ?? []).not.toContain('account_id')
+    expect(tool?.inputSchema.properties?.account_id).toEqual({
       type: 'string',
       description:
-        'Cloudflare account ID. Required for multi-account tokens. Call the get_accounts tool to discover available accounts.'
+        'Cloudflare account ID. Optional when the session is authorized for exactly one account; otherwise required. Call the get_accounts tool to discover available accounts.'
     })
-    expect(JSON.stringify(listedTool)).not.toContain('Account One')
-    expect(JSON.stringify(listedTool)).not.toContain('acct-1')
   })
 
   it('adds account discovery guidance when multi-account account_id is missing', async () => {
@@ -926,51 +821,6 @@ describe('createServer with codemode=false', () => {
     expect(result.content[0].text).toContain(
       'Call the get_accounts tool to discover available accounts.'
     )
-  })
-
-  it('drops account_id from the schema for account-token sessions', async () => {
-    const specPaths = {
-      '/accounts/{account_id}/workers/scripts': {
-        get: {
-          summary: 'List Workers',
-          parameters: [{ name: 'account_id', in: 'path', required: true }]
-        } as OperationInfo
-      }
-    }
-
-    await seedSpec(specPaths)
-    const server = await createServer(acctProps('acct-123'), { codemode: false })
-
-    const tools = await listTools(server)
-    const tool = tools.find((item) => item.name === 'get_accounts_workers_scripts')
-    // account_id is pinned to the token's account, so it must not be a param.
-    expect(tool?.inputSchema.properties?.account_id).toBeUndefined()
-  })
-
-  it('drops account_id from the schema for single-account user tokens', async () => {
-    const specPaths = {
-      '/accounts/{account_id}/workers/scripts': {
-        get: {
-          summary: 'List Workers',
-          parameters: [{ name: 'account_id', in: 'path', required: true }]
-        } as OperationInfo
-      }
-    }
-
-    const props: AuthProps = {
-      type: 'user_token',
-      accessToken: 'test-token',
-      user: { id: 'u1', email: 'test@example.com' },
-      accounts: [{ id: 'acct-only', name: 'Only Account' }]
-    }
-
-    await seedSpec(specPaths)
-    const server = await createServer(props, { codemode: false })
-
-    const tools = await listTools(server)
-    const tool = tools.find((item) => item.name === 'get_accounts_workers_scripts')
-    // The sole account auto-resolves, so account_id must not be a param.
-    expect(tool?.inputSchema.properties?.account_id).toBeUndefined()
   })
 
   it('endpoint with no params at all works', async () => {
@@ -1074,24 +924,56 @@ describe('tool metadata is identical for every user', () => {
     return JSON.stringify(await listTools(await createServer(props, { codemode })))
   }
 
-  const alice = singleAccountUser('aaaa1111', "alice@example.com's Account", 'alice@example.com')
-  const bob = singleAccountUser('bbbb2222', "bob@example.com's Account", 'bob@example.com')
+  function userWithAccounts(
+    count: number,
+    extra: Partial<Extract<AuthProps, { type: 'user_token' }>> = {}
+  ): AuthProps {
+    return {
+      type: 'user_token',
+      accessToken: `token-${count}`,
+      user: { id: `user-${count}`, email: `user${count}@example.com` },
+      accounts: Array.from({ length: count }, (_, index) => ({
+        id: `acct-${count}-${index + 1}`,
+        name: `Account ${count}-${index + 1}`
+      })),
+      ...extra
+    }
+  }
 
-  const cases: Array<[string, AuthProps, AuthProps]> = [
-    ['single-account users', alice, bob],
+  const alice = singleAccountUser('aaaa1111', "alice@example.com's Account", 'alice@example.com')
+
+  // Every token shape the server distinguishes at call time. A client may cache
+  // the tool list from any one of them and serve it to any other.
+  const sessions: Array<[string, AuthProps]> = [
     [
-      'multi-account users',
-      multiAccountUser('alice', 'alice@example.com'),
-      multiAccountUser('bob', 'bob@example.com')
+      'another single-account user',
+      singleAccountUser('bbbb2222', "bob's Account", 'bob@example.com')
     ],
-    ['account tokens', accountToken('aaaa1111', 'Alice Inc'), accountToken('bbbb2222', 'Bob LLC')]
+    ['a versioned multi-account user', multiAccountUser('carol', 'carol@example.com')],
+    ['a 30-account user', userWithAccounts(30)],
+    ['a legacy grant with exactly 20 accounts', userWithAccounts(20)],
+    [
+      'a versioned grant with exactly 20 accounts',
+      userWithAccounts(20, { version: AUTH_PROPS_VERSION })
+    ],
+    ['a user whose account list was omitted', userWithAccounts(0, { accountCount: 137 })],
+    ['an account token', accountToken('dddd4444', 'Dave LLC')]
   ]
 
   for (const codemode of [true, false]) {
-    for (const [label, first, second] of cases) {
-      it(`matches across ${label} with codemode=${codemode}`, async () => {
-        await seedSpec({})
-        expect(await serializedTools(first, codemode)).toBe(await serializedTools(second, codemode))
+    for (const [label, session] of sessions) {
+      it(`matches a single-account user for ${label} with codemode=${codemode}`, async () => {
+        await seedSpec({
+          '/accounts/{account_id}/workers/scripts': {
+            get: {
+              summary: 'List Workers',
+              parameters: [{ name: 'account_id', in: 'path', required: true }]
+            } as OperationInfo
+          }
+        })
+        expect(await serializedTools(session, codemode)).toBe(
+          await serializedTools(alice, codemode)
+        )
       })
     }
   }
@@ -1099,7 +981,7 @@ describe('tool metadata is identical for every user', () => {
   it('never includes the account id, account name, or email of a single-account user', async () => {
     await seedSpec({})
     const tools = await serializedTools(alice, true)
-    expect(tools).toContain('pre-set to the account authorized for this session')
+    expect(tools).toContain('GET /accounts')
     expect(tools).not.toContain('aaaa1111')
     expect(tools).not.toContain('alice@example.com')
   })
