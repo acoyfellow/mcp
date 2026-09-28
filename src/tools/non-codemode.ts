@@ -6,7 +6,9 @@ import { fetchWithRetry } from '../utils/fetch-retry'
 import { getNonCodemodeToolMap, getNonCodemodeTools } from '../isolate-cache'
 import {
   NON_CODEMODE_ACCOUNT_DISCOVERY_GUIDANCE,
-  autoResolvedAccountId
+  autoResolvedAccountId,
+  missingAccountMessage,
+  unknownAccountHint
 } from '../auth/account-access'
 import { recordToolCall } from '../metrics'
 import { DOCS_TOOL, runDocsTool } from './docs-search'
@@ -28,7 +30,6 @@ export async function registerNonCodemodeTools(
 ): Promise<void> {
   const tools = await getNonCodemodeTools()
   const toolsByName = await getNonCodemodeToolMap()
-  const resolvedAccountId = autoResolvedAccountId(props)
 
   server.server.registerCapabilities({ tools: { listChanged: false } })
 
@@ -56,13 +57,7 @@ export async function registerNonCodemodeTools(
             .object(zodInputSchemaFromJson(tool.inputSchema))
             .safeParse(request.params.arguments ?? {})
           result = parsed.success
-            ? await callNonCodemodeTool(
-                baseTool,
-                parsed.data,
-                resolvedAccountId,
-                props.accessToken,
-                formatResult
-              )
+            ? await callNonCodemodeTool(baseTool, parsed.data, props, formatResult)
             : validationError(name, parsed.error)
         }
       }
@@ -78,8 +73,7 @@ export async function registerNonCodemodeTools(
 async function callNonCodemodeTool(
   tool: NonCodemodeTool,
   params: Record<string, unknown>,
-  resolvedAccountId: string | undefined,
-  apiToken: string,
+  props: AuthProps,
   formatResult: FormatToolResult
 ): Promise<CallToolResult> {
   let resolvedPath = tool.path
@@ -87,11 +81,9 @@ async function callNonCodemodeTool(
 
   for (const paramName of pathParams) {
     let value = params[paramName] as string | undefined
-    if (paramName === 'account_id' && !value) value = resolvedAccountId
+    if (paramName === 'account_id' && !value) value = autoResolvedAccountId(props)
     if (!value && paramName === 'account_id') {
-      return toolError(
-        `missing required path parameter: account_id. ${NON_CODEMODE_ACCOUNT_DISCOVERY_GUIDANCE}`
-      )
+      return toolError(missingAccountMessage(props, NON_CODEMODE_ACCOUNT_DISCOVERY_GUIDANCE))
     }
     if (!value) return toolError(`missing required path parameter: ${paramName}`)
     resolvedPath = resolvedPath.replace(`{${paramName}}`, encodeURIComponent(value))
@@ -104,7 +96,7 @@ async function callNonCodemodeTool(
     }
   }
 
-  const headers: Record<string, string> = { Authorization: `Bearer ${apiToken}` }
+  const headers: Record<string, string> = { Authorization: `Bearer ${props.accessToken}` }
   for (const { name, key } of tool.headerParams) {
     if (params[key] !== undefined) headers[name] = String(params[key])
   }
@@ -125,8 +117,10 @@ async function callNonCodemodeTool(
     ? await response.json()
     : await response.text()
 
+  const accountId = params['account_id'] as string | undefined
+  const hint = !response.ok && accountId ? unknownAccountHint(props, accountId) : ''
   return {
-    content: [{ type: 'text', text: formatResult(result) }],
+    content: [{ type: 'text', text: formatResult(result) + (hint ? `\n\n${hint}` : '') }],
     isError: !response.ok
   }
 }

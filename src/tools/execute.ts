@@ -8,7 +8,9 @@ import { formatError } from '../utils/errors'
 import {
   ACCOUNT_DISCOVERY_DESCRIPTION,
   ACCOUNT_DISCOVERY_GUIDANCE,
-  autoResolvedAccountId
+  autoResolvedAccountId,
+  missingAccountMessage,
+  unknownAccountHint
 } from '../auth/account-access'
 import type { AuthProps } from '../auth/types'
 
@@ -58,7 +60,8 @@ export class GlobalOutbound extends WorkerEntrypoint<Env, GlobalOutboundProps> {
 async function runExecute(
   code: string,
   accountId: string | undefined,
-  apiToken: string
+  apiToken: string,
+  unresolvedAccountMessage: string
 ): Promise<unknown> {
   const apiBase = env.CLOUDFLARE_API_BASE
   const workerId = `cloudflare-api-${crypto.randomUUID()}`
@@ -67,7 +70,6 @@ async function runExecute(
   // don't bind a usable `accountId`. Account-independent calls (GET /accounts,
   // GET /user) never touch it, but any code that reads it fails fast with a
   // clear message instead of silently producing `/accounts//...` (a 404).
-  const unresolvedAccountMessage = `No account selected: this token has access to multiple accounts. ${ACCOUNT_DISCOVERY_GUIDANCE}`
   const accountIdPrelude = accountId
     ? `const accountId = ${JSON.stringify(accountId)};`
     : `Object.defineProperty(globalThis, "accountId", { configurable: true, get() {
@@ -271,10 +273,18 @@ export function registerExecuteTool(
         // code that reads `accountId` then fails fast with a clear message.
         const effectiveAccountId = account_id || autoResolvedAccountId(props)
 
-        const result = await runExecute(code, effectiveAccountId, apiToken)
+        const result = await runExecute(
+          code,
+          effectiveAccountId,
+          apiToken,
+          missingAccountMessage(props, ACCOUNT_DISCOVERY_GUIDANCE)
+        )
         return { content: [{ type: 'text', text: formatResult(result) }] }
       } catch (error) {
-        return formatError(error)
+        const failure = formatError(error)
+        const hint = account_id ? unknownAccountHint(props, account_id) : ''
+        if (hint) failure.content[0].text += `\n\n${hint}`
+        return failure
       }
     }
   )

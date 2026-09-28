@@ -797,7 +797,7 @@ describe('createServer with codemode=false', () => {
     })
   })
 
-  it('adds account discovery guidance when multi-account account_id is missing', async () => {
+  it("lists the session's accounts when multi-account account_id is missing", async () => {
     const specPaths = {
       '/accounts/{account_id}/workers/scripts': {
         get: { summary: 'List Workers' } as OperationInfo
@@ -818,8 +818,8 @@ describe('createServer with codemode=false', () => {
     const result = await callTool(server, 'get_accounts_workers_scripts', {})
 
     expect(result.isError).toBe(true)
-    expect(result.content[0].text).toContain(
-      'Call the get_accounts tool to discover available accounts.'
+    expect(result.content[0].text).toBe(
+      "No account selected. Pass account_id with one of this session's accounts:\n- acct-1 (Account One)\n- acct-2 (Account Two)"
     )
   })
 

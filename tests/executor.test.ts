@@ -1,7 +1,13 @@
 import { env } from 'cloudflare:workers'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { API_BASE, cfAccountsSuccess, cfSuccess, mockIdentityProbe } from './helpers/cloudflare-api'
+import {
+  API_BASE,
+  cfAccountsSuccess,
+  cfError,
+  cfSuccess,
+  mockIdentityProbe
+} from './helpers/cloudflare-api'
 import { clearKv } from './helpers/kv'
 import { clearSpec, seedSpec } from './helpers/spec'
 import { callTool, toolText } from './helpers/mcp'
@@ -178,15 +184,17 @@ describe('execute: no account resolved (multi-account user token)', () => {
     expect(toolText(result)).toContain('"success": true')
   })
 
-  it('fails fast with a clear message when code reads the unset accountId', async () => {
+  it("fails fast with the session's accounts when code reads the unset accountId", async () => {
     mockMultiAccountUser()
     const result = await callTool(API_TOKEN, 'execute', {
       code: `async () => cloudflare.request({ method: "GET", path: \`/accounts/\${accountId}/workers/scripts\` })`
     })
     const text = toolText(result)
-    expect(text).toContain('No account selected')
-    expect(text).toContain('Call GET /accounts to discover available accounts.')
-    expect(text).not.toContain('pass account_id to the execute tool')
+    expect(text).toContain(
+      "No account selected. Pass account_id with one of this session's accounts:"
+    )
+    expect(text).toContain(`- ${ACCOUNT_ID} (Acc One)`)
+    expect(text).toContain('- 00000000000000000000000000000002 (Acc Two)')
     // Must not have silently produced an /accounts//... request.
     expect(text).not.toContain('/accounts//')
   })
@@ -194,6 +202,58 @@ describe('execute: no account resolved (multi-account user token)', () => {
 
 describe('execute: account resolution', () => {
   const OTHER_ACCOUNT_ID = '00000000000000000000000000000002'
+  const listWorkers =
+    'async () => cloudflare.request({ method: "GET", path: `/accounts/${accountId}/workers/scripts` })'
+
+  function mockUnauthorized(accountId: string) {
+    server.use(
+      http.get(`${API_BASE}/accounts/${accountId}/workers/scripts`, () =>
+        HttpResponse.json(
+          cfError([{ code: 9109, message: 'Unauthorized to access requested resource' }]),
+          {
+            status: 403
+          }
+        )
+      )
+    )
+  }
+
+  it("lists the session's accounts when a failed call used an unknown account_id", async () => {
+    mockIdentityProbe({
+      user: { id: 'u1', email: 'u@example.com' },
+      accounts: [
+        { id: ACCOUNT_ID, name: 'Acc One' },
+        { id: OTHER_ACCOUNT_ID, name: 'Acc Two' }
+      ]
+    })
+    mockUnauthorized('not-my-account')
+    const result = await callTool(API_TOKEN, 'execute', {
+      code: listWorkers,
+      account_id: 'not-my-account'
+    })
+    const text = toolText(result)
+    expect(result.result?.isError).toBe(true)
+    expect(text).toContain('9109: Unauthorized to access requested resource')
+    expect(text).toContain("account_id not-my-account is not one of this session's accounts:")
+    expect(text).toContain(`- ${ACCOUNT_ID} (Acc One)`)
+  })
+
+  it("adds no account hint when a failed call used one of the session's accounts", async () => {
+    mockIdentityProbe({
+      user: { id: 'u1', email: 'u@example.com' },
+      accounts: [
+        { id: ACCOUNT_ID, name: 'Acc One' },
+        { id: OTHER_ACCOUNT_ID, name: 'Acc Two' }
+      ]
+    })
+    mockUnauthorized(OTHER_ACCOUNT_ID)
+    const result = await callTool(API_TOKEN, 'execute', {
+      code: listWorkers,
+      account_id: OTHER_ACCOUNT_ID
+    })
+    expect(result.result?.isError).toBe(true)
+    expect(toolText(result)).not.toContain('is not one of')
+  })
 
   it('pre-sets accountId when the session has exactly one account', async () => {
     mockIdentityProbe({ accounts: [{ id: ACCOUNT_ID, name: 'Acc' }] })

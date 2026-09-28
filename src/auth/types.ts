@@ -14,8 +14,8 @@ export const AccountsSchema = z.array(AccountSchema)
 
 /**
  * Max accounts whose IDs/names we are willing to store on a grant or in the
- * identity cache (and inline into prompt metadata). Above this, only the count
- * is kept so we never persist a long, potentially-sensitive account list.
+ * identity cache. Above this, only the count is kept so we never persist a
+ * long, potentially-sensitive account list.
  */
 export const MAX_STORED_ACCOUNTS = 30
 
@@ -24,6 +24,13 @@ export const MAX_STORED_ACCOUNTS = 30
  * is too large to persist even if pagination metadata is unexpectedly absent.
  */
 export const ACCOUNTS_PROBE_PAGE_SIZE = MAX_STORED_ACCOUNTS + 1
+
+/**
+ * Account-list page size the identity probe used before MAX_STORED_ACCOUNTS
+ * existed. A pre-versioning grant holding exactly this many accounts was almost
+ * certainly truncated to the first page, so its list is treated as incomplete.
+ */
+export const LEGACY_ACCOUNTS_PAGE_SIZE = 20
 
 /**
  * Schema version stamped onto props the current code writes. Props without a

@@ -1,7 +1,7 @@
 import { env, exports } from 'cloudflare:workers'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { API_BASE, cfSuccess, mockIdentityProbe } from './helpers/cloudflare-api'
+import { API_BASE, cfError, cfSuccess, mockIdentityProbe } from './helpers/cloudflare-api'
 import { clearKv } from './helpers/kv'
 import { clearSpec, seedSpec } from './helpers/spec'
 import {
@@ -129,6 +129,24 @@ describe('non-codemode: account_id auto-resolution through real MCP validation',
     expect(toolText(result)).toContain('worker-a')
     // account_id was auto-resolved into the upstream URL.
     expect(calledUrl).toContain(`/accounts/${ACCOUNT_ID}/workers/scripts`)
+  })
+
+  it("names the token's account when a call with another account_id fails", async () => {
+    mockIdentityProbe({ accounts: [{ id: ACCOUNT_ID, name: 'Acc' }] })
+    server.use(
+      http.get(`${API_BASE}/accounts/not-my-account/workers/scripts`, () =>
+        HttpResponse.json(cfError([{ code: 9109, message: 'Unauthorized' }]), { status: 403 })
+      )
+    )
+
+    const result = await callNonCodemodeTool(ACCOUNT_TOKEN, 'get_accounts_workers_scripts', {
+      account_id: 'not-my-account'
+    })
+
+    expect(result.result?.isError).toBe(true)
+    expect(toolText(result)).toContain(
+      `account_id not-my-account is not this token's account. This token is scoped to ${ACCOUNT_ID} (Acc); omit account_id to use it.`
+    )
   })
 
   it('forwards an explicitly-passed account_id', async () => {
