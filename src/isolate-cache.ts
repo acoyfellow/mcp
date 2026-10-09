@@ -1,13 +1,20 @@
 import { env } from 'cloudflare:workers'
 import type { Tool } from '@modelcontextprotocol/server'
 import { MCP_TOOLS_KEY, type McpTool } from './openapi'
+import {
+  SKILLS_MANIFEST_KEY,
+  SkillsManifest,
+  skillFileKey,
+  type Skill,
+  type SkillFile
+} from './skills/types'
 
 /**
  * In-isolate cache for the R2 artifacts the scheduled handler writes
- * (`spec.json`, `products.json`, `mcp-tools.json`).
+ * (`spec.json`, `products.json`, `mcp-tools.json`, the skills manifest and files).
  *
  * The MCP worker isolate stays warm across requests, so without this every
- * call re-read R2. The artifacts change at most daily, so a short TTL keeps a
+ * call re-read R2. The artifacts change at most every six hours, so a short TTL keeps a
  * warm isolate from serving stale data for long after an update while still
  * absorbing nearly all reads.
  */
@@ -112,9 +119,72 @@ export function getProducts(): Promise<string[]> {
   return products.get()
 }
 
+/** The synced skills, indexed for `skills/get` and `resources/read`. */
+export interface SkillsIndex {
+  readonly skills: readonly Skill[]
+  readonly skillsByUri: ReadonlyMap<string, Skill>
+  readonly filesByUri: ReadonlyMap<string, SkillFile>
+}
+
+const skills = cached(async (): Promise<SkillsIndex> => {
+  const object = await env.SPEC_BUCKET.get(SKILLS_MANIFEST_KEY)
+  const entries = object ? SkillsManifest.parse(await object.json()).skills : []
+  return {
+    skills: entries.map((entry) => entry.skill),
+    skillsByUri: new Map(entries.map((entry) => [entry.skill.uri, entry.skill])),
+    filesByUri: new Map(entries.flatMap((entry) => entry.files.map((file) => [file.uri, file])))
+  }
+})
+
+/**
+ * The skills manifest written by the sync. Empty until the first sync,
+ * which the Skills extension allows: hosts must not read an empty listing as
+ * proof that a server has no skills.
+ */
+export function getSkills(): Promise<SkillsIndex> {
+  return skills.get()
+}
+
+/**
+ * Skill file bytes by R2 key. Files are content-addressed and never change, so
+ * they need no TTL; the cap only bounds memory. The whole catalog is a few MB.
+ */
+const SKILL_FILE_CACHE_BYTES = 16 * 1024 * 1024
+let skillFileBytes = new Map<string, Uint8Array>()
+let skillFileCacheSize = 0
+
+/**
+ * The bytes of one skill file, which always match `file.digest`.
+ *
+ * @throws If R2 no longer holds them, which only happens when a manifest
+ *   cached here is older than the sync's retention window.
+ */
+export async function readSkillFile(file: SkillFile): Promise<Uint8Array> {
+  const key = skillFileKey(file.digest)
+  const hit = skillFileBytes.get(key)
+  if (hit) return hit
+
+  const object = await env.SPEC_BUCKET.get(key)
+  if (!object) {
+    skills.reset()
+    throw new Error(`Skill file ${file.uri} is missing from R2; reload the skill entry`)
+  }
+  const bytes = new Uint8Array(await object.arrayBuffer())
+  if (skillFileCacheSize + bytes.byteLength > SKILL_FILE_CACHE_BYTES) {
+    skillFileBytes = new Map()
+    skillFileCacheSize = 0
+  }
+  skillFileBytes.set(key, bytes)
+  skillFileCacheSize += bytes.byteLength
+  return bytes
+}
+
 /** Drop cached artifacts. For tests that re-seed R2 between cases. */
 export function resetIsolateCache(): void {
   spec.reset()
   products.reset()
   mcpTools.reset()
+  skills.reset()
+  skillFileBytes = new Map()
+  skillFileCacheSize = 0
 }
