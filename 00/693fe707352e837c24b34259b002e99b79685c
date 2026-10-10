@@ -1,0 +1,51 @@
+AGENTS.md
+  s_4f65335ba8955f::t_db91a663da2d12 24,128-134
+docs/mcp-events.md
+  s_4f65335ba8955f::t_1a6d6e2feb83ea 1-168
+package.json
+  s_4f65335ba8955f::t_5d8bf823e7b418 16-17
+scripts/mcp-events-client.mjs
+  s_4f65335ba8955f::t_75cd14d8c8d540 1-53
+scripts/mcp-events-receiver.mjs
+  s_4f65335ba8955f::t_c596badd082a7b 1-74
+src/apps/attention/sources.ts
+  s_4f65335ba8955f::t_f358a3a23d4a6f 92-100,102,107-108,112-120
+src/events/ans-bridge.ts
+  s_4f65335ba8955f::t_538fb781cf87b7 1-540
+src/events/api.ts
+  s_4f65335ba8955f::t_66bfa48ca96cd9 1-93
+src/events/callback.ts
+  s_4f65335ba8955f::t_c105106b372478 1-55
+src/events/methods.ts
+  s_4f65335ba8955f::t_1ee5e48b3a5b77 1-91
+src/events/service.ts
+  s_4f65335ba8955f::t_40f24d789af1dd 1-339
+src/events/state.ts
+  s_4f65335ba8955f::t_1fa72c2c0bbd2a 1-117
+src/index.ts
+  s_4f65335ba8955f::t_f6c92cf17d694c 2,65
+src/mcp-handler.ts
+  s_4f65335ba8955f::t_79c3825844b7ad 37,43-47,101-102,112-116,124-125
+src/server.ts
+  s_4f65335ba8955f::t_c1f1d2082efaa2 13-14,40-41,50
+tests/ans-bridge.test.ts
+  s_4f65335ba8955f::t_ad140e4185a212 1-430
+tests/events-e2e.test.ts
+  s_4f65335ba8955f::t_69e717322ae9c9 1-513
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "00693fe707352e837c24b34259b002e99b79685c",
+  "prompts": {},
+  "sessions": {
+    "s_4f65335ba8955f": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0428c-86e7-7e26-bc73-8a8b9b5c6d7f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jordan Coeyman <jcoeyman@cloudflare.com>"
+    }
+  }
+}
