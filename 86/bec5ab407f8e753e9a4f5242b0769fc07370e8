@@ -1,0 +1,27 @@
+src/apps/attention/panel-html.ts
+  s_4f65335ba8955f::t_8bbf389d5749c5 2
+src/apps/attention/sources.ts
+  s_4f65335ba8955f::t_a903978c16d334 59-76,87,181,187,200,210-211,221
+src/apps/attention/ui/Panel.tsx
+  s_4f65335ba8955f::t_0e7fe8912f9e30 127-130
+src/apps/attention/ui/host.ts
+  s_4f65335ba8955f::t_a4b2d09829b0c1 21,59,64,67-74
+tests/apps/attention.test.ts
+  s_4f65335ba8955f::t_b7360a07d21f82 180-185,188-190,194-207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "86bec5ab407f8e753e9a4f5242b0769fc07370e8",
+  "prompts": {},
+  "sessions": {
+    "s_4f65335ba8955f": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0428c-86e7-7e26-bc73-8a8b9b5c6d7f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jordan Coeyman <jcoeyman@cloudflare.com>"
+    }
+  }
+}
