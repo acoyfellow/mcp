@@ -1,0 +1,21 @@
+src/apps/attention/sources.ts
+  s_4f65335ba8955f::t_2d1edbb320f84c 135-140,152
+tests/apps/attention.test.ts
+  s_4f65335ba8955f::t_b8f3487b0e36b1 142-160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c67921418f6e1c97f1f44948efddda8a8aed6ecf",
+  "prompts": {},
+  "sessions": {
+    "s_4f65335ba8955f": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0428c-86e7-7e26-bc73-8a8b9b5c6d7f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jordan Coeyman <jcoeyman@cloudflare.com>"
+    }
+  }
+}
