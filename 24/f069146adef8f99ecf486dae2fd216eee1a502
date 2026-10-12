@@ -1,0 +1,21 @@
+src/apps/attention/panel-html.ts
+  s_4f65335ba8955f::t_99aa43f432caab 1
+tests/auth/token-compatibility.test.ts
+  s_4f65335ba8955f::t_e8cc461ca3d39c 229
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "24f069146adef8f99ecf486dae2fd216eee1a502",
+  "prompts": {},
+  "sessions": {
+    "s_4f65335ba8955f": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0428c-86e7-7e26-bc73-8a8b9b5c6d7f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jordan Coeyman <jcoeyman@cloudflare.com>"
+    }
+  }
+}
