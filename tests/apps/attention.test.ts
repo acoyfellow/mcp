@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ATTENTION_TOOL, runAttentionTool } from '../../src/apps/attention/tool'
 import { AttentionReportSchema } from '../../src/apps/attention/report'
+import { workersIssueAttentionItem } from '../../src/events/attention-item'
 import { AUTH_PROPS_VERSION, type AuthProps } from '../../src/auth/types'
 import { API_BASE, cfError, cfSuccess, mockIdentityProbe } from '../helpers/cloudflare-api'
 import { clearKv } from '../helpers/kv'
@@ -190,6 +191,27 @@ describe('show_attention result', () => {
 
     expect(insight?.detail).toBe('mfa not enabled')
     expect(insight?.followUp).not.toContain('security_center.')
+  })
+
+  it('gives a Workers issue the same id and title in the sidebar and in an MCP event', async () => {
+    mockFeeds()
+    const report = reportOf(await runAttentionTool(singleAccount, {}, NOW))
+    const sidebar = report.items.find((item) => item.source === 'workers')
+    const event = workersIssueAttentionItem({
+      text: 'ANS notification',
+      ts: Date.parse('2026-10-10T11:30:00Z') / 1000,
+      data: {
+        issue: {
+          id: WORKERS_ISSUE.id,
+          title: WORKERS_ISSUE.title,
+          services: [{ name: WORKERS_ISSUE.service }]
+        }
+      }
+    })
+
+    expect(event?.id).toBe(sidebar?.id)
+    expect(event?.title).toBe(sidebar?.title)
+    expect(event?.source).toBe(sidebar?.source)
   })
 
   it('writes the Workers issue count and time for people to read', async () => {

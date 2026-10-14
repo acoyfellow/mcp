@@ -182,14 +182,22 @@ function occurrenceText(count: number): string {
   return count === 1 ? 'once' : `${COUNT_FORMAT.format(count)} times`
 }
 
+export function workersItemId(issueId: string): string {
+  return `workers:${issueId}`
+}
+
+export function workersItemTitle(service: string, issueTitle: string): string {
+  return `${service}: ${issueTitle}`
+}
+
 function workersItem(issue: z.infer<typeof WorkersIssueSchema>): AttentionItem {
   const lastSeen = isoFromEpoch(issue.lastObserved)
   const seen = `Seen ${occurrenceText(issue.count)}, last on ${TIME_FORMAT.format(new Date(lastSeen))} UTC.`
   return {
-    id: `workers:${issue.id}`,
+    id: workersItemId(issue.id),
     source: 'workers',
     severity: 'warning',
-    title: `${issue.service}: ${issue.title}`,
+    title: workersItemTitle(issue.service, issue.title),
     detail: seen,
     observedAt: lastSeen,
     followUp: `Workers Observability detected an issue in the Worker "${issue.service}": "${issue.title}", seen ${issue.count} times, last at ${lastSeen}. Find the cause and suggest a fix.`

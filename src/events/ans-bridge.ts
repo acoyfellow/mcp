@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ATTENTION_ITEM_META_KEY, workersIssueAttentionItem } from './attention-item'
 
 export const MAX_EVENT_BYTES = 256 * 1024
 export const SUPPORTED_ALERT_TYPES: ReadonlySet<string> = new Set([
@@ -525,12 +526,17 @@ export async function forwardAnsWebhook(
   const identity = await dependencies.eventIdentity(subscription, alert)
   if (!identity) return new Response(null, { status: 503 })
   const eventId = `evt_${await digest(JSON.stringify([subscription.id, identity]))}`
+  const attentionItem =
+    subscription.alertType === 'workers_observability_real_time_issue'
+      ? workersIssueAttentionItem(alert)
+      : undefined
   const body = JSON.stringify({
     eventId,
     name: `cloudflare.alert.${subscription.alertType}`,
     timestamp: occurrenceTime.toISOString(),
     data: alert,
-    cursor: null
+    cursor: null,
+    ...(attentionItem ? { _meta: { [ATTENTION_ITEM_META_KEY]: attentionItem } } : {})
   })
   if (new TextEncoder().encode(body).length > MAX_EVENT_BYTES) {
     return new Response(null, { status: 413 })

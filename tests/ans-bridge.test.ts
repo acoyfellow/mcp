@@ -305,6 +305,24 @@ describe('ANS synchronous delivery bridge', () => {
     expect(first.redirect).toBe('error')
   })
 
+  it('carries the same attention item the sidebar shows for the Workers issue', async () => {
+    const deps = dependencies()
+    await forwardAnsWebhook(request(), subscription.id, deps)
+    const delivered = JSON.parse(vi.mocked(deps.webhookFetch).mock.calls[0][1]!.body as string)
+
+    expect(delivered.data).toEqual(alert)
+    expect(delivered._meta['com.cloudflare/attentionItem']).toEqual({
+      id: 'workers:issue-1',
+      source: 'workers',
+      severity: 'warning',
+      title: 'my-worker: Untrusted issue text',
+      detail: 'New occurrence at 1970-01-01T00:01:40.000Z.',
+      observedAt: '1970-01-01T00:01:40.000Z',
+      followUp:
+        'Workers Observability detected an issue in the Worker "my-worker": "Untrusted issue text", last at 1970-01-01T00:01:40.000Z. Find the cause and suggest a fix.'
+    })
+  })
+
   it('forwards a real Workers issue alert, which carries no account_id', async () => {
     const { account_id: _account, ...issueAlert } = alert
     const deps = dependencies()
