@@ -1,0 +1,29 @@
+.github/workflows/preview.yml
+  s_4f65335ba8955f::t_144292cdcc82b6 1-124
+.gitignore
+  s_4f65335ba8955f::t_7c0916080b5bea 7
+scripts/preview-config.mjs
+  s_4f65335ba8955f::t_e7314f8e8176ec 1-37
+src/index.ts
+  s_4f65335ba8955f::t_f6422bc4777db0 79
+src/mcp-handler.ts
+  s_4f65335ba8955f::t_e8e3188203f06a 56-60,62-63,67-72,118
+tests/mcp-deployed-host.test.ts
+  s_4f65335ba8955f::t_bf426a80e01c10 1-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "58984d4d0ce8405329f81bdc5b8e3df878080bc5",
+  "prompts": {},
+  "sessions": {
+    "s_4f65335ba8955f": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0428c-86e7-7e26-bc73-8a8b9b5c6d7f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jordan Coeyman <jcoeyman@cloudflare.com>"
+    }
+  }
+}
