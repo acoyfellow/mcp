@@ -389,7 +389,10 @@ describe('MCP Events through the real Worker', () => {
     expect(JSON.parse(deliveries[0].body)).toMatchObject({
       name: params.name,
       data: { data: { issue: { id: 'issue-1' } } },
-      cursor: null
+      cursor: null,
+      _meta: {
+        'com.cloudflare/attentionItem': { id: 'workers:issue-1', source: 'workers' }
+      }
     })
     // The draft's unsubscribe sends delivery as `{ url }` alone.
     const delivery = { url: params.delivery.url }
