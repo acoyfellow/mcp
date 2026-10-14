@@ -8,15 +8,28 @@ import {
   unknownAccountHint
 } from '../../auth/account-access'
 import type { AuthProps } from '../../auth/types'
+import { ATTENTION_PANEL_HTML } from './panel-html'
 import { AttentionReportSchema, reportText, sortItems, type AttentionReport } from './report'
 import { SOURCES, loadFeed, type FeedRequest } from './sources'
+
+export const ATTENTION_RESOURCE_URI = 'ui://cloudflare/attention-panel.html'
+export const MCP_APP_MIME_TYPE = 'text/html;profile=mcp-app'
 
 const NAME = 'show_attention'
 const TITLE = 'Cloudflare: needs attention'
 const DESCRIPTION =
   'Show what in a Cloudflare account needs action now: notifications that fired in the last 7 days, open Security Center insights, and active Workers Observability issues. ' +
-  'Each item says what to look into next. Read-only. ' +
+  'Renders an interactive panel where each item can start a follow-up. Read-only. ' +
   'Pass account_id when the connection can reach more than one account.'
+
+const ICON_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.33" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5 17.5 16H2.5z"/><path d="M10 8v3.5"/><path d="M10 14h.01"/></svg>'
+
+const ICON = {
+  src: `data:image/svg+xml;base64,${btoa(ICON_SVG)}`,
+  mimeType: 'image/svg+xml',
+  sizes: ['any']
+}
 
 const READ_SCOPES = [
   'notifications.read',
@@ -40,6 +53,9 @@ const ANNOTATIONS = {
 }
 
 const META = {
+  ui: { resourceUri: ATTENTION_RESOURCE_URI, visibility: ['model', 'app'] },
+  'openai/outputTemplate': ATTENTION_RESOURCE_URI,
+  'openai/ui': { entrypoints: [{ type: 'global' }, { type: 'thread' }] },
   securitySchemes: [{ type: 'oauth2', scopes: READ_SCOPES }]
 }
 
@@ -47,6 +63,7 @@ export const ATTENTION_TOOL: Tool = {
   name: NAME,
   title: TITLE,
   description: DESCRIPTION,
+  icons: [ICON],
   inputSchema: {
     $schema: 'https://json-schema.org/draft/2020-12/schema',
     type: 'object',
@@ -62,6 +79,32 @@ export const ATTENTION_TOOL: Tool = {
   },
   annotations: ANNOTATIONS,
   _meta: META
+}
+
+export const ATTENTION_RESOURCE = {
+  uri: ATTENTION_RESOURCE_URI,
+  name: 'attention-panel',
+  title: TITLE,
+  mimeType: MCP_APP_MIME_TYPE,
+  _meta: {
+    ui: {
+      csp: { connectDomains: [], resourceDomains: [] },
+      prefersBorder: true
+    }
+  }
+}
+
+export function readAttentionResource() {
+  return {
+    contents: [
+      {
+        uri: ATTENTION_RESOURCE_URI,
+        mimeType: MCP_APP_MIME_TYPE,
+        text: ATTENTION_PANEL_HTML,
+        _meta: ATTENTION_RESOURCE._meta
+      }
+    ]
+  }
 }
 
 export async function buildAttentionReport(request: FeedRequest): Promise<AttentionReport> {
@@ -108,6 +151,7 @@ export function registerAttentionTool(server: McpServer, props: AuthProps): void
     {
       title: TITLE,
       description: DESCRIPTION,
+      icons: [ICON],
       inputSchema: AttentionInputSchema,
       annotations: { ...ANNOTATIONS },
       _meta: META

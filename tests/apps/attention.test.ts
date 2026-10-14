@@ -1,7 +1,12 @@
 import { env } from 'cloudflare:workers'
 import { http, HttpResponse } from 'msw'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { ATTENTION_TOOL, runAttentionTool } from '../../src/apps/attention/tool'
+import {
+  ATTENTION_RESOURCE_URI,
+  ATTENTION_TOOL,
+  MCP_APP_MIME_TYPE,
+  runAttentionTool
+} from '../../src/apps/attention/tool'
 import { AttentionReportSchema } from '../../src/apps/attention/report'
 import { AUTH_PROPS_VERSION, type AuthProps } from '../../src/auth/types'
 import { API_BASE, cfError, cfSuccess, mockIdentityProbe } from '../helpers/cloudflare-api'
@@ -88,10 +93,15 @@ function reportOf(result: Awaited<ReturnType<typeof runAttentionTool>>) {
 }
 
 describe('show_attention definition', () => {
-  it('is a read-only tool', () => {
+  it('links its panel and opts into the sidebar and thread entrypoints', () => {
     expect(ATTENTION_TOOL).toMatchObject({
       name: 'show_attention',
-      annotations: { readOnlyHint: true, destructiveHint: false }
+      annotations: { readOnlyHint: true, destructiveHint: false },
+      _meta: {
+        ui: { resourceUri: ATTENTION_RESOURCE_URI },
+        'openai/outputTemplate': ATTENTION_RESOURCE_URI,
+        'openai/ui': { entrypoints: [{ type: 'global' }, { type: 'thread' }] }
+      }
     })
   })
 
@@ -355,6 +365,22 @@ describe('show_attention over MCP', () => {
   afterEach(async () => {
     await clearKv(env.OAUTH_KV)
     await clearSpec()
+  })
+
+  it('serves the panel as an MCP App resource', async () => {
+    mockIdentityProbe({
+      user: { id: 'user-1', email: 'a@example.com' },
+      accounts: [{ id: ACCOUNT_ID, name: 'Alice Co' }]
+    })
+    const response = await exports.default.fetch(
+      modernMcpRequest('cfut_attention', 'resources/read', { uri: ATTENTION_RESOURCE_URI })
+    )
+    const body = await parseMcpResult(response)
+    const [content] = (body.result as { contents: Array<Record<string, unknown>> }).contents
+
+    expect(content).toMatchObject({ uri: ATTENTION_RESOURCE_URI, mimeType: MCP_APP_MIME_TYPE })
+    expect(content.text).toContain('ui/initialize')
+    expect(content.text).toContain('data-attention-build')
   })
 
   it('returns the report from tools/call', async () => {
