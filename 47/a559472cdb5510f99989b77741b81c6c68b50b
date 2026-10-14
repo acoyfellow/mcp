@@ -1,0 +1,21 @@
+.github/workflows/preview.yml
+  s_4f65335ba8955f::t_8eb95e5106205b 1-124
+scripts/preview-config.mjs
+  s_4f65335ba8955f::t_13935f883c0623 1-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "47a559472cdb5510f99989b77741b81c6c68b50b",
+  "prompts": {},
+  "sessions": {
+    "s_4f65335ba8955f": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "01a0428c-86e7-7e26-bc73-8a8b9b5c6d7f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jordan Coeyman <jcoeyman@cloudflare.com>"
+    }
+  }
+}
