@@ -132,16 +132,32 @@ const SECURITY_SEVERITY: Record<'Low' | 'Moderate' | 'Critical', Severity> = {
   Low: 'info'
 }
 
-function dashboardLink(value: string | undefined): string | undefined {
-  if (!value || !URL.canParse(value)) return undefined
-  const url = new URL(value)
+const DASHBOARD_ORIGIN = 'https://dash.cloudflare.com'
+
+function dashboardLink(value: string | undefined, accountId: string): string | undefined {
+  if (!value) return undefined
+  const resolved = value.startsWith('/')
+    ? `${DASHBOARD_ORIGIN}${value.replaceAll(':account_id', encodeURIComponent(accountId))}`
+    : value
+  if (!URL.canParse(resolved)) return undefined
+  const url = new URL(resolved)
   return url.protocol === 'https:' && url.hostname === 'dash.cloudflare.com' ? url.href : undefined
 }
 
-function securityItem(insight: z.infer<typeof SecurityInsightSchema>): AttentionItem {
+const DASHBOARD_TRANSLATION_KEY = /^[a-z0-9_]+(\.[a-z0-9_]+)+$/
+
+function readableText(value: string | undefined): string | undefined {
+  return value && !DASHBOARD_TRANSLATION_KEY.test(value) ? value : undefined
+}
+
+function securityItem(
+  insight: z.infer<typeof SecurityInsightSchema>,
+  accountId: string
+): AttentionItem {
   const kind = (insight.issue_type ?? 'security insight').replaceAll('_', ' ')
   const subject = insight.subject ?? 'this account'
-  const detail = insight.resolve_text || insight.issue_class?.replaceAll('_', ' ') || kind
+  const detail =
+    readableText(insight.resolve_text) || insight.issue_class?.replaceAll('_', ' ') || kind
   return {
     id: `security:${insight.id}`,
     source: 'security',
@@ -149,7 +165,7 @@ function securityItem(insight: z.infer<typeof SecurityInsightSchema>): Attention
     title: `${kind} on ${subject}`,
     detail,
     observedAt: insight.timestamp,
-    link: dashboardLink(insight.resolve_link),
+    link: dashboardLink(insight.resolve_link, accountId),
     followUp: `Cloudflare Security Center flagged ${kind} on ${subject}: ${detail}. Explain the risk and walk me through fixing it.`
   }
 }
@@ -193,7 +209,7 @@ async function alertItems(request: FeedRequest): Promise<AttentionItem[]> {
 async function securityItems(request: FeedRequest): Promise<AttentionItem[]> {
   const query = new URLSearchParams({ dismissed: 'false', per_page: String(PAGE_SIZE) })
   const result = SecurityResultSchema.parse(await fetchResult(request, FEED_PATH.security, query))
-  return result.issues.map(securityItem)
+  return result.issues.map((insight) => securityItem(insight, request.accountId))
 }
 
 async function workersItems(request: FeedRequest): Promise<AttentionItem[]> {

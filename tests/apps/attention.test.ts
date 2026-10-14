@@ -148,6 +148,50 @@ describe('show_attention result', () => {
     ).toEqual([undefined, undefined])
   })
 
+  it('resolves the relative dashboard links Security Center returns', async () => {
+    mockFeeds({
+      security: () =>
+        HttpResponse.json(
+          cfSuccess({
+            issues: [
+              { ...INSIGHT, id: 'a', resolve_link: '/:account_id/turnstile' },
+              { ...INSIGHT, id: 'b', resolve_link: '/profile/authentication' }
+            ]
+          })
+        )
+    })
+    const report = reportOf(await runAttentionTool(singleAccount, {}, NOW))
+
+    expect(
+      report.items.filter((item) => item.source === 'security').map((item) => item.link)
+    ).toEqual([
+      `https://dash.cloudflare.com/${ACCOUNT_ID}/turnstile`,
+      'https://dash.cloudflare.com/profile/authentication'
+    ])
+  })
+
+  it('replaces untranslated dashboard keys with the insight class', async () => {
+    mockFeeds({
+      security: () =>
+        HttpResponse.json(
+          cfSuccess({
+            issues: [
+              {
+                ...INSIGHT,
+                issue_class: 'mfa_not_enabled',
+                resolve_text: 'security_center.checks.mfa.resolution_button'
+              }
+            ]
+          })
+        )
+    })
+    const report = reportOf(await runAttentionTool(singleAccount, {}, NOW))
+    const insight = report.items.find((item) => item.source === 'security')
+
+    expect(insight?.detail).toBe('mfa not enabled')
+    expect(insight?.followUp).not.toContain('security_center.')
+  })
+
   it('writes the Workers issue count and time for people to read', async () => {
     mockFeeds({
       workers: () =>
