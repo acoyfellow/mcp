@@ -13,6 +13,11 @@ import { server } from './setup/msw'
 
 const accountId = 'a'.repeat(32)
 const token = 'cfat_events-local-test-token'
+/**
+ * Another token for the same account. Every token for an account shares its
+ * principal, so this one names the same subscriptions, but it may only read.
+ */
+const readOnlyToken = 'cfat_events-local-test-read-only-token'
 const callbackUrl = 'https://receiver.example.com/events'
 const signingSecret = `whsec_${btoa('a'.repeat(32))}`
 const params = {
@@ -192,7 +197,8 @@ beforeEach(async () => {
       return new HttpResponse(null, { status: callbackStatus })
     }),
     http.all(`${API_BASE}/accounts/${accountId}/*`, async ({ request }) => {
-      expect(request.headers.get('Authorization')).toBe(`Bearer ${token}`)
+      const bearer = request.headers.get('Authorization')
+      expect([`Bearer ${token}`, `Bearer ${readOnlyToken}`]).toContain(bearer)
       expect(request.headers.get('User-Agent')).toBe(USER_AGENT)
       const path = new URL(request.url).pathname.slice(`/client/v4/accounts/${accountId}`.length)
       const collection = [WEBHOOKS, POLICIES, AUTOMATIONS].find(
@@ -214,6 +220,8 @@ beforeEach(async () => {
         failNext = ''
         return HttpResponse.json({ success: false, errors: [] }, { status: 503 })
       }
+      if (bearer === `Bearer ${readOnlyToken}` && request.method !== 'GET')
+        return HttpResponse.json({ success: false, errors: [] }, { status: 403 })
       if (
         resourceId &&
         collection === POLICIES &&
@@ -499,11 +507,25 @@ describe('MCP Events through the real Worker', () => {
   it('stops forwarding on unsubscribe even when ANS cleanup fails', async () => {
     await rpc('events/subscribe', params)
     const destination = [...records(WEBHOOKS).values()][0]
-    failNext = `GET ${POLICIES}`
+    failNext = `DELETE ${AUTOMATIONS}`
     const { secret: _secret, ...delivery } = params.delivery
     expect((await rpc('events/unsubscribe', { ...params, delivery })).error).toBeDefined()
+    expect([...records(POLICIES).values()][0].enabled).toBe(false)
     expect((await exports.default.fetch(ansRequest(destination))).status).toBe(204)
     expect(deliveries).toHaveLength(0)
+  })
+
+  it('keeps delivering when a token that may not manage the subscription unsubscribes', async () => {
+    await rpc('events/subscribe', params)
+    const { secret: _secret, ...delivery } = params.delivery
+    const unsubscribe = { ...params, delivery }
+    // It may read the policy but not change it, then not even read it.
+    expect((await rpc('events/unsubscribe', unsubscribe, readOnlyToken)).error?.code).toBe(-32012)
+    policyReadStatus = 403
+    expect((await rpc('events/unsubscribe', unsubscribe, readOnlyToken)).error?.code).toBe(-32012)
+    expect([...records(POLICIES).values()][0].enabled).toBe(true)
+    expect((await exports.default.fetch(ansRequest())).status).toBe(204)
+    expect(deliveries).toHaveLength(1)
   })
 
   it('stores no token or signing secret; only ANS holds the sealed secret', async () => {
@@ -535,6 +557,15 @@ describe('MCP Events through the real Worker', () => {
     const subscribed = await rpc('events/subscribe', params)
     policyReadStatus = 403
     expect((await rpc('events/subscribe', params)).error?.code).toBe(-32012)
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse(subscribed.result!.refreshBefore!) + 1)
+    expect((await exports.default.fetch(ansRequest())).status).toBe(204)
+    expect(deliveries).toHaveLength(0)
+  })
+
+  it('does not extend delivery when a token that may only read refreshes', async () => {
+    const subscribed = await rpc('events/subscribe', params)
+    const refresh = { ...params, ttlMs: 60 * 60_000 }
+    expect((await rpc('events/subscribe', refresh, readOnlyToken)).error?.code).toBe(-32012)
     vi.spyOn(Date, 'now').mockReturnValue(Date.parse(subscribed.result!.refreshBefore!) + 1)
     expect((await exports.default.fetch(ansRequest())).status).toBe(204)
     expect(deliveries).toHaveLength(0)

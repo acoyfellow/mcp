@@ -284,7 +284,14 @@ export class EventService {
       const automationId =
         (await api.find(AUTOMATIONS, name, AUTOMATIONS_LISTING)) ??
         (await api.create(AUTOMATIONS, automationBody, 'automation'))
-      // Write the record before enabling delivery, so the first alert finds it.
+      await api.result(`${POLICIES}/${encodeURIComponent(resolvedPolicyId)}`, 'PUT', {
+        ...policyBody,
+        enabled: true
+      })
+      // Write the record only once Cloudflare accepts the policy change. A
+      // refresh that reuses every resource changes nothing in Cloudflare before
+      // this, so a caller that may only read could otherwise extend delivery.
+      // Write it before enabling the automation, so the first alert finds it.
       await writeSubscriptionRecord(
         this.env,
         {
@@ -298,10 +305,6 @@ export class EventService {
         },
         now
       )
-      await api.result(`${POLICIES}/${encodeURIComponent(resolvedPolicyId)}`, 'PUT', {
-        ...policyBody,
-        enabled: true
-      })
       await api.result(`${AUTOMATIONS}/${encodeURIComponent(automationId)}`, 'PUT', {
         ...automationBody,
         enabled: true
@@ -322,9 +325,6 @@ export class EventService {
     if (!isSupportedEventName(params.name)) throw new EventNotFound(params.name)
     const id = await subscriptionId(`${this.env.MCP_RESOURCE}:${this.principal}`, params)
     return serialized(id, async () => {
-      // Stop forwarding first, so delivery ends even if ANS cleanup fails. The
-      // ID is derived from this principal, so it can only name its own record.
-      await deleteSubscriptionRecord(this.env, id)
       const api = this.api(params.arguments.account_id)
       const name = managedName(id)
       const policyId = await api.find(POLICIES, name)
@@ -339,6 +339,12 @@ export class EventService {
           ...body,
           enabled: false
         })
+        // Stop forwarding before the rest of the cleanup, so delivery ends even
+        // if it fails. Not earlier: every token for an account shares its
+        // principal, so only Cloudflare accepting this change shows the caller
+        // may manage the subscription. With no policy, nothing delivers to the
+        // record, and it expires on its own.
+        await deleteSubscriptionRecord(this.env, id)
       }
       const automationId = await api.find(AUTOMATIONS, name, AUTOMATIONS_LISTING)
       if (automationId) await api.remove(`${AUTOMATIONS}/${encodeURIComponent(automationId)}`)
